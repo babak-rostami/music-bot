@@ -14,7 +14,7 @@ class TelBotController extends Controller
 
         Http::post("https://api.telegram.org/bot8934572332:AAEL9Cxt-HG0nE7XU_7VBh8d5t6yrrqfMeA/sendMessage", [
             'chat_id' => $chatId,
-            'text' => 'پیام دریافت شد' . $text
+            'text' => 'پیام دریافت شد تستی: ' . $text
         ]);
     }
 }
