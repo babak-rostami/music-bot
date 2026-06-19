@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('title');
             $table->string('artist_name');
-            $table->string('source_url');
+            $table->string('source_url')->unique();
             $table->text('lyrics')->nullable();
             $table->bigInteger('downloads_count')->default(0);
             $table->string('telegram_file_id_128')->nullable();

@@ -11,4 +11,5 @@ Route::get('/user', function (Request $request) {
 
 
 Route::post('music-webhook', [TelBotController::class, 'index']);
-Route::get('music', [CrawlMusicController::class, 'crawl']);
+Route::get('crawl-musics', [CrawlMusicController::class, 'crawlAll']);
+Route::get('crawl-last-musics', [CrawlMusicController::class, 'crawlLast']);

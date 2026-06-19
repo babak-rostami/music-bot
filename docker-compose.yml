@@ -9,7 +9,36 @@ services:
     working_dir: /var/www
     volumes:
       - ./:/var/www
+    command: php-fpm
     depends_on:
+      - postgres
+    networks:
+      - musicbot
+
+  queue:
+    image: musicbot-app
+    command: php artisan queue:work --queue=crawl-musics-page --tries=3 --timeout=600
+    restart: unless-stopped
+    working_dir: /var/www 
+    volumes:
+      - ./:/var/www
+    depends_on:
+      - app
+      - redis
+      - postgres
+    networks:
+      - musicbot
+
+  scheduler:
+    image: musicbot-app
+    restart: unless-stopped
+    working_dir: /var/www 
+    volumes:
+      - ./:/var/www
+    command: php artisan schedule:work
+    depends_on:
+      - app
+      - redis
       - postgres
     networks:
       - musicbot
@@ -69,8 +98,19 @@ services:
       - postgres
     networks:
       - musicbot
+
+  redis:
+    image: redis:8.8
+    container_name: musicbot-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - musicbot
+
 networks:
   musicbot:
 volumes:
   postgres_data:
   pgadmin_data:
+  redis_data:
