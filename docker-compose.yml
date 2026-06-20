@@ -19,7 +19,7 @@ services:
     image: musicbot-app
     command: php artisan queue:work --queue=crawl-musics-page --tries=3 --timeout=600
     restart: unless-stopped
-    working_dir: /var/www 
+    working_dir: /var/www
     volumes:
       - ./:/var/www
     depends_on:
@@ -32,7 +32,7 @@ services:
   scheduler:
     image: musicbot-app
     restart: unless-stopped
-    working_dir: /var/www 
+    working_dir: /var/www
     volumes:
       - ./:/var/www
     command: php artisan schedule:work
@@ -108,9 +108,22 @@ services:
     networks:
       - musicbot
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - musicbot
+
 networks:
   musicbot:
 volumes:
   postgres_data:
   pgadmin_data:
   redis_data:
+  es_data:

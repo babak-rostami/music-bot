@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Jobs\CrawlLastMusicJob;
 use App\Jobs\CrawlMusicJob;
 use App\Models\Song;
+use Babak\Elasticsearch\Facades\Elasticsearch;
 use Illuminate\Support\Facades\Http;
 use Symfony\Component\DomCrawler\Crawler;
 
@@ -77,8 +78,7 @@ class MusicCrawlerService
         if (!$music || !$music['musicName']) {
             return;
         }
-
-        Song::firstOrCreate(
+        $song = Song::firstOrCreate(
             ['source_url' => $music['musicUrl']],
             [
                 'title' => $music['musicName'],
@@ -88,6 +88,10 @@ class MusicCrawlerService
                 'download_link_320' => $music['dl_link_320'],
             ]
         );
+
+        if ($song->wasRecentlyCreated) {
+            Elasticsearch::sync($song);
+        }
 
         return true;
     }

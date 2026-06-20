@@ -5,7 +5,8 @@ RUN apt-get update && apt-get install -y \
     unzip \
     curl \
     libpq-dev \
-    zip
+    zip \
+    ffmpeg
 
 RUN docker-php-ext-install pdo_pgsql pgsql
 
