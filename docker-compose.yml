@@ -1,3 +1,24 @@
+x-queue-worker: &queue-worker
+  image: musicbot-app
+  restart: unless-stopped
+  working_dir: /var/www
+  volumes:
+    - ./:/var/www
+  depends_on:
+    - redis
+  networks:
+    - musicbot
+
+x-download-worker: &download-worker
+  <<: *queue-worker
+  command: >
+    php artisan queue:work --queue=download-music --tries=3 --timeout=300 --sleep=3 --max-jobs=100 --max-time=3600
+
+x-crawl-worker: &crawl-worker
+  <<: *queue-worker
+  command: >
+    php artisan queue:work --queue=crawl-musics-page --tries=3 --timeout=600 --sleep=1 --max-jobs=500 --max-time=3600
+
 services:
   app:
     build:
@@ -15,19 +36,11 @@ services:
     networks:
       - musicbot
 
-  queue:
-    image: musicbot-app
-    command: php artisan queue:work --queue=crawl-musics-page --tries=3 --timeout=600
-    restart: unless-stopped
-    working_dir: /var/www
-    volumes:
-      - ./:/var/www
-    depends_on:
-      - app
-      - redis
-      - postgres
-    networks:
-      - musicbot
+  queue-crawl:
+    <<: *crawl-worker
+
+  queue-download-1:
+    <<: *download-worker
 
   scheduler:
     image: musicbot-app

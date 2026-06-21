@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\ProcessMusicDownloadJob;
 use App\Models\Song;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -22,21 +23,16 @@ class SongUploadService
         );
 
         [$quality, $song] = $this->extractSongData($data);
-        $downloadUrl = $this->getDownloadUrl($song, $quality);
-        $fileName = $this->generateFileName($song);
-        $tempDirectory = 'temp/' . Str::uuid();
-        Storage::disk('local')->makeDirectory($tempDirectory);
 
-        try {
-            // ۲. دانلود و پردازش آهنگ
-            $originalFile = $this->downloadSong($downloadUrl, $tempDirectory);
-            $cleanFile = $this->removeMetadata($originalFile, $tempDirectory, $fileName);
+        // 🆕 بررسی Cache: آیا قبلاً این آهنگ با این کیفیت توی کانال Cache هست؟
+        $fileIdColumn = "telegram_file_id_{$quality}";
+        $cachedFileId = $song->{$fileIdColumn};
 
-            // ۳. ارسال فایل صوتی به کاربر
-            $telegramService->sendAudio(
+        if ($cachedFileId) {
+            // 🚀 Cache Hit: فقط فوروارد، بدون دانلود، بدون ffmpeg، بدون آپلود
+            $telegramService->sendAudioByFileId(
                 $chatId,
-                $cleanFile,
-                $fileName,
+                $cachedFileId,
                 $song->title,
                 $song->artist_name
             );
@@ -48,14 +44,19 @@ class SongUploadService
                 );
             }
 
-            // <<< ۴. حذف پیام "در حال آماده‌سازی..." پس از ارسال موفق >>>
             $telegramService->deleteMessage($chatId, $messageId);
-        } finally {
-            // ۵. همیشه دایرکتوری موقت را پاک کن
-            Storage::disk('local')->deleteDirectory($tempDirectory);
-        }
-    }
 
+            return;
+        }
+
+        // 🐢 Cache Miss: فقط dispatch کن، خودت فوری برگرد
+        ProcessMusicDownloadJob::dispatch(
+            $song->id,
+            $quality,
+            $chatId,
+            $messageId,
+        )->onQueue('download-music');
+    }
 
     private function extractSongData(string $data): array
     {
@@ -65,64 +66,5 @@ class SongUploadService
             $parts[2],
             Song::findOrFail($parts[3]),
         ];
-    }
-
-    private function getDownloadUrl(Song $song, string $quality): string
-    {
-        return $quality === '128'
-            ? $song->download_link_128
-            : $song->download_link_320;
-    }
-
-    private function generateFileName(Song $song): string
-    {
-        return preg_replace(
-            '/[\/\\\\:*?"<>|]/u',
-            '',
-            "{$song->title} - {$song->artist_name}"
-        ) . '.mp3';
-    }
-
-    private function downloadSong(
-        string $downloadUrl,
-        string $tempDirectory
-    ): string {
-
-        $filePath = storage_path(
-            "app/private/{$tempDirectory}/original.mp3"
-        );
-
-        $stream = fopen($filePath, 'w');
-
-        Http::timeout(300)
-            ->withOptions([
-                'sink' => $stream,
-            ])
-            ->get($downloadUrl);
-
-        fclose($stream);
-
-        return $filePath;
-    }
-
-    private function removeMetadata(
-        string $originalFile,
-        string $tempDirectory,
-        string $fileName
-    ): string {
-
-        $cleanFile = storage_path(
-            "app/private/{$tempDirectory}/{$fileName}"
-        );
-
-        exec(
-            "ffmpeg -i "
-                . escapeshellarg($originalFile)
-                . " -map 0:a -c copy -map_metadata -1 "
-                . escapeshellarg($cleanFile)
-                . " -y"
-        );
-
-        return $cleanFile;
     }
 }

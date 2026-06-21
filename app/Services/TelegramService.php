@@ -80,4 +80,52 @@ class TelegramService
             'text' => $text,
         ]);
     }
+
+    /**
+     * 🆕 ارسال فایل صوتی فقط با file_id (بدون آپلود مجدد)
+     * وقتی فایل قبلاً توی کانال Cache آپلود شده، فقط فوروارد می‌کنیم
+     */
+    public function sendAudioByFileId(int|string $chatId, string $fileId, string $title, string $performer)
+    {
+        return Http::post($this->apiUrl . '/sendAudio', [
+            'chat_id'   => $chatId,
+            'audio'     => $fileId,   // ← وقتی audio یه file_id باشه، تلگرام فقط فوروارد می‌کنه
+            'title'     => $title,
+            'performer' => $performer,
+        ]);
+    }
+
+    /**
+     * 🆕 آپلود فایل به کانال Cache و برگردوندن file_id
+     * خروجی: ['file_id' => '...'] یا null اگه شکست خورد
+     */
+    public function uploadAudioToCacheChannel(string $filePath, $song): ?array
+    {
+        $cacheChannelId = env('TELEGRAM_CACHE_CHANNEL_ID');
+
+        if (!$cacheChannelId) {
+            return null; // کانال کش تنظیم نشده → no-op
+        }
+
+        $response = Http::attach('audio', fopen($filePath, 'r'), basename($filePath))
+            ->post($this->apiUrl . '/sendAudio', [
+                'chat_id'   => $cacheChannelId,
+                'title'     => $song->title,
+                'performer' => $song->artist_name,
+            ]);
+
+        if ($song->lyrics) {
+            $this->sendMessage($cacheChannelId, $song->lyrics);
+        }
+
+        if (!$response->successful()) {
+            return null; // ← اگه ربات ادمین نبود، یا کانال اشتباه بود
+        }
+
+        $message = $response->json('result');
+
+        return [
+            'file_id' => $message['audio']['file_id'] ?? null,
+        ];
+    }
 }
