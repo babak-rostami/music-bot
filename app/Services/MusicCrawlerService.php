@@ -62,7 +62,7 @@ class MusicCrawlerService
             [
                 'title' => $music['musicName'],
                 'artist_name' => $music['singer'],
-                'lyrics' => $music['lyrics'],
+                'lyrics' => (empty(trim($music['lyrics'])) || $music['lyrics'] === '...') ? null : $music['lyrics'],
                 'download_link_128' => $music['dl_link_128'],
                 'download_link_320' => $music['dl_link_320'],
             ]
@@ -83,7 +83,7 @@ class MusicCrawlerService
             [
                 'title' => $music['musicName'],
                 'artist_name' => $music['singer'],
-                'lyrics' => $music['lyrics'],
+                'lyrics' => (empty(trim($music['lyrics'])) || $music['lyrics'] === '...') ? null : $music['lyrics'],
                 'download_link_128' => $music['dl_link_128'],
                 'download_link_320' => $music['dl_link_320'],
             ]
@@ -118,18 +118,31 @@ class MusicCrawlerService
 
             $lyrics = '';
 
+            // گره پاراگراف مورد نظر را پیدا کن
             $node = $crawler->filter('.matnmusic .text p')->first();
 
             if ($node->count() > 0) {
 
+                // مرحله ۱: استخراج محتوای کامل HTML
                 $lyricsHtml = $node->html();
 
-                $lyrics = str_replace(
+                // مرحله ۲: حذف تگ‌های <br>
+                // این کار باید قبل از حذف بقیه تگ‌ها انجام شود
+                $lyricsWithNewlines = str_replace(
                     ['<br>', '<br/>', '<br />'],
                     "",
                     $lyricsHtml
                 );
-                $lyrics = str_replace("\u{200C}", ' ', $lyrics);
+
+                // مرحله ۳: حذف تمام تگ‌های HTML باقی‌مانده (مثل <a>)
+                // متن داخل تگ‌ها حفظ می‌شود
+                $plainText = strip_tags($lyricsWithNewlines);
+
+                // مرحله ۴: تبدیل کاراکتر نیم‌فاصله به فاصله و تمیزکاری نهایی
+                $lyrics = str_replace("\u{200C}", ' ', $plainText);
+
+                // حذف فاصله‌های اضافی از ابتدا و انتهای متن
+                $lyrics = trim($lyrics);
             }
 
             $dl_link_320 = null;
