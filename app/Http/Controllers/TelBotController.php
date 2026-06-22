@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\MembershipService;
 use App\Services\SongUploadService;
 use App\Services\TelegramService;
+use App\Telegram\Actions\RequestSongAction;
 use App\Telegram\Actions\ShowDownloadOptionsAction;
 use App\Telegram\MessageProcessor;
 use Illuminate\Http\Request;
@@ -18,19 +19,22 @@ class TelBotController extends Controller
     private ShowDownloadOptionsAction $showDownloadOptionsAction;
     private MessageProcessor $messageProcessor;
     private MembershipService $membershipService;
+    private RequestSongAction $requestSongAction;
 
     public function __construct(
         TelegramService $telegramService,
         SongUploadService $songUploadService,
         ShowDownloadOptionsAction $showDownloadOptionsAction,
         MessageProcessor $messageProcessor,
-        MembershipService $membershipService
+        MembershipService $membershipService,
+        RequestSongAction $requestSongAction
     ) {
         $this->telegramService = $telegramService;
         $this->songUploadService = $songUploadService;
         $this->showDownloadOptionsAction = $showDownloadOptionsAction;
         $this->messageProcessor = $messageProcessor;
         $this->membershipService = $membershipService;
+        $this->requestSongAction = $requestSongAction;
     }
 
     public function index(Request $request)
@@ -131,6 +135,10 @@ class TelBotController extends Controller
             $this->showDownloadOptionsAction->execute($callback['id'], $songId, $chatId, $messageId);
         } elseif (str_starts_with($data, 'download_music_')) {
             $this->songUploadService->processAndSend($callback, $data, $chatId, $this->telegramService);
+        } elseif (str_starts_with($data, 'request_song_')) {
+            // 🆕 کاربر روی دکمه "هیچکدوم نبود - ثبت درخواست" زده
+            $token = str_replace('request_song_', '', $data);
+            $this->requestSongAction->execute($callback['id'], $token, $chatId, $messageId);
         }
     }
 

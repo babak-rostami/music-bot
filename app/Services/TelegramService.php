@@ -11,37 +11,61 @@ class TelegramService
 
     public function __construct()
     {
-        // بهتره توکن رو در فایل کانفیگ بذاریم ولی برای سادگی فعلا اینجاست
         $this->apiUrl = 'https://api.telegram.org/bot' . config('telegram.bot_token');
     }
 
-    public function sendMessage(int|string $chatId, string $text, ?array $inlineKeyboard = null)
-    {
+    /**
+     * ارسال پیام متنی
+     *
+     * @param int|string $chatId
+     * @param string $text
+     * @param array|null $inlineKeyboard  آرایه دکمه‌ها (مثلاً [['text' => '...', 'callback_data' => '...']])
+     * @param string|null $parseMode     'HTML' | 'MarkdownV2' | null (plain text)
+     */
+    public function sendMessage(
+        int|string $chatId,
+        string $text,
+        ?array $inlineKeyboard = null,
+        ?string $parseMode = null
+    ) {
         $payload = [
             'chat_id' => $chatId,
-            'text' => $text,
+            'text'    => $text,
         ];
+
+        if ($parseMode) {
+            $payload['parse_mode'] = $parseMode;
+        }
 
         if ($inlineKeyboard) {
             $payload['reply_markup'] = json_encode([
-                'inline_keyboard' => $inlineKeyboard
+                'inline_keyboard' => $inlineKeyboard,
             ]);
         }
 
         return Http::post($this->apiUrl . '/sendMessage', $payload);
     }
 
-    public function editMessageText(int|string $chatId, int $messageId, string $text, ?array $inlineKeyboard = null)
-    {
+    public function editMessageText(
+        int|string $chatId,
+        int $messageId,
+        string $text,
+        ?array $inlineKeyboard = null,
+        ?string $parseMode = null
+    ) {
         $payload = [
-            'chat_id' => $chatId,
+            'chat_id'    => $chatId,
             'message_id' => $messageId,
-            'text' => $text,
+            'text'       => $text,
         ];
 
-        if ($inlineKeyboard !== null) { // مهم: حتی اگر آرایه خالی باشد باید ارسال شود
+        if ($parseMode) {
+            $payload['parse_mode'] = $parseMode;
+        }
+
+        if ($inlineKeyboard !== null) {
             $payload['reply_markup'] = json_encode([
-                'inline_keyboard' => $inlineKeyboard
+                'inline_keyboard' => $inlineKeyboard,
             ]);
         }
 
@@ -54,7 +78,7 @@ class TelegramService
     public function deleteMessage(int|string $chatId, int $messageId)
     {
         return Http::post($this->apiUrl . '/deleteMessage', [
-            'chat_id' => $chatId,
+            'chat_id'    => $chatId,
             'message_id' => $messageId,
         ]);
     }
@@ -73,27 +97,20 @@ class TelegramService
     {
         return Http::post($this->apiUrl . '/answerCallbackQuery', [
             'callback_query_id' => $callbackQueryId,
-            'text' => $text,
+            'text'              => $text,
         ]);
     }
 
-    /**
-     * 🆕 ارسال فایل صوتی فقط با file_id (بدون آپلود مجدد)
-     * وقتی فایل قبلاً توی کانال Cache آپلود شده، فقط فوروارد می‌کنیم
-     */
     public function sendAudioByFileId(int|string $chatId, string $fileId, string $title, string $performer)
     {
         return Http::post($this->apiUrl . '/sendAudio', [
             'chat_id'   => $chatId,
-            'audio'     => $fileId,   // ← وقتی audio یه file_id باشه، تلگرام فقط فوروارد می‌کنه
+            'audio'     => $fileId,
             'title'     => $title,
             'performer' => $performer,
         ]);
     }
 
-    /**
-     * 🆕 آپلود فایل به کانال Cache و برگردوندن file_id
-     */
     public function uploadAudioToCacheChannel(string $filePath, $song): ?array
     {
         $cacheChannelId = config('telegram.cache_channel_id');
@@ -125,12 +142,7 @@ class TelegramService
     }
 
     /**
-     * 🆕 بررسی عضویت یک کاربر در یک چت (کانال/گروه)
-     *
-     * خروجی: آرایه‌ای شامل status ('member' | 'administrator' | 'creator' | 'left' | 'kicked')
-     * یا null در صورت بروز خطا (مثلاً ربات ادمین نیست یا کانال پیدا نشد)
-     *
-     * ⚠️ برای کانال‌ها، ربات حتماً باید Admin باشد.
+     * بررسی عضویت یک کاربر در یک چت (کانال/گروه)
      */
     public function getChatMember(string|int $chatId, int $userId): ?array
     {
