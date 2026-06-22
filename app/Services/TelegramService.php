@@ -1,9 +1,9 @@
 <?php
 
-// app/Services/TelegramService.php
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class TelegramService
 {
@@ -12,7 +12,7 @@ class TelegramService
     public function __construct()
     {
         // بهتره توکن رو در فایل کانفیگ بذاریم ولی برای سادگی فعلا اینجاست
-        $this->apiUrl = 'https://api.telegram.org/bot' . env('TELEGRAM_BOT_TOKEN');
+        $this->apiUrl = 'https://api.telegram.org/bot' . config('telegram.bot_token');
     }
 
     public function sendMessage(int|string $chatId, string $text, ?array $inlineKeyboard = null)
@@ -50,10 +50,6 @@ class TelegramService
 
     /**
      * یک پیام را از چت حذف می‌کند.
-     *
-     * @param int|string $chatId
-     * @param int $messageId
-     * @return \Illuminate\Http\Client\Response
      */
     public function deleteMessage(int|string $chatId, int $messageId)
     {
@@ -97,14 +93,13 @@ class TelegramService
 
     /**
      * 🆕 آپلود فایل به کانال Cache و برگردوندن file_id
-     * خروجی: ['file_id' => '...'] یا null اگه شکست خورد
      */
     public function uploadAudioToCacheChannel(string $filePath, $song): ?array
     {
-        $cacheChannelId = env('TELEGRAM_CACHE_CHANNEL_ID');
+        $cacheChannelId = config('telegram.cache_channel_id');
 
         if (!$cacheChannelId) {
-            return null; // کانال کش تنظیم نشده → no-op
+            return null;
         }
 
         $response = Http::attach('audio', fopen($filePath, 'r'), basename($filePath))
@@ -119,7 +114,7 @@ class TelegramService
         }
 
         if (!$response->successful()) {
-            return null; // ← اگه ربات ادمین نبود، یا کانال اشتباه بود
+            return null;
         }
 
         $message = $response->json('result');
@@ -127,5 +122,33 @@ class TelegramService
         return [
             'file_id' => $message['audio']['file_id'] ?? null,
         ];
+    }
+
+    /**
+     * 🆕 بررسی عضویت یک کاربر در یک چت (کانال/گروه)
+     *
+     * خروجی: آرایه‌ای شامل status ('member' | 'administrator' | 'creator' | 'left' | 'kicked')
+     * یا null در صورت بروز خطا (مثلاً ربات ادمین نیست یا کانال پیدا نشد)
+     *
+     * ⚠️ برای کانال‌ها، ربات حتماً باید Admin باشد.
+     */
+    public function getChatMember(string|int $chatId, int $userId): ?array
+    {
+        $response = Http::post($this->apiUrl . '/getChatMember', [
+            'chat_id' => $chatId,
+            'user_id' => $userId,
+        ]);
+
+        if (!$response->successful()) {
+            Log::warning('Telegram getChatMember failed', [
+                'chat_id' => $chatId,
+                'user_id' => $userId,
+                'status'  => $response->status(),
+                'body'    => $response->json('description'),
+            ]);
+            return null;
+        }
+
+        return $response->json('result');
     }
 }
