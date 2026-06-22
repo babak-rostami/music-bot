@@ -20,20 +20,8 @@ class ProcessMusicDownloadJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /**
-     * حداکثر زمان اجرای Job (ثانیه)
-     * چون دانلود آهنگ ممکنه طول بکشه
-     */
     public int $timeout = 300; // ۵ دقیقه
-
-    /**
-     * تعداد تلاش مجدد در صورت خطا
-     */
     public int $tries = 3;
-
-    /**
-     * تأخیر بین هر تلاش (ثانیه)
-     */
     public int $backoff = 10;
 
     public function __construct(
@@ -43,16 +31,12 @@ class ProcessMusicDownloadJob implements ShouldQueue
         public readonly int $messageId,
     ) {}
 
-    /**
-     * 🛡 Middleware: جلوگیری از اجرای همزمان چند جاب برای یک آهنگ
-     * (مثلاً اگه ۱۰ کاربر همزمان درخواست بدن، یکی دانلود کنه، بقیه صبر کنن)
-     */
     public function middleware(): array
     {
         return [
             (new WithoutOverlapping("song-{$this->songId}-{$this->quality}"))
-                ->dontRelease()        // ← جاب منتظر میمونه تا لاک آزاد بشه
-                ->expireAfter(600)     // ← اگه جاب ۱۰ دقیقه طول کشید، lock expire میشه
+                ->dontRelease()
+                ->expireAfter(600)
         ];
     }
 
@@ -67,36 +51,41 @@ class ProcessMusicDownloadJob implements ShouldQueue
             return;
         }
 
-
-        // ✅✅✅ اگه دو نفر همزمان بخوان دانلود کنن این آهنگ رو
-        // وقتی نفر دوم بعد گذشتن از میدلور این جاب، وارد هندل شد
-        //  اینجا از فوروارد استفاده میکنیم براش ✅✅✅
         $fileIdColumn = "telegram_file_id_{$this->quality}";
+
+        // ─────────────────────────────────────────────────
+        // تلاش ۱: استفاده از file_id کش شده
+        // ─────────────────────────────────────────────────
         $cachedFileId = $song->{$fileIdColumn};
+
         if ($cachedFileId) {
-            // یکی دیگه زحمتش رو کشیده، فقط فوروارد کن
-            $telegram->sendAudioByFileId(
+            $response = $telegram->sendAudioByFileId(
                 $this->chatId,
                 $cachedFileId,
                 $song->title,
                 $song->artist_name
             );
 
-            if ($song->lyrics) {
-                $telegram->sendMessage(
-                    $this->chatId,
-                    "🎤 متن آهنگ:\n\n" . $song->lyrics
-                );
+            if ($response->successful()) {
+                // ✅ کش موفق
+                $this->sendLyricsAndCleanup($telegram, $song);
+                return;
             }
 
-            $telegram->deleteMessage($this->chatId, $this->messageId);
-            return;
+            // ❌ file_id کش شده کار نکرد (شاید پیام از کانال کش پاک شده یا file_id عوض شده)
+            Log::warning('Cached file_id invalid, will re-upload', [
+                'song_id'    => $this->songId,
+                'quality'    => $this->quality,
+                'error'      => $response->json('description'),
+            ]);
+
+            // file_id بی‌اعتبار رو پاک کن
+            $song->update([$fileIdColumn => null]);
         }
 
-        // اگه دونفر همزمان روی دانلود یک آهنگ بزنن
-        // برای نفر اول فقط کدای پایین اجرا میشه
-        // برای نفر دوم فقط کدای بالا
-
+        // ─────────────────────────────────────────────────
+        // تلاش ۲: دانلود + آپلود به کش + ارسال
+        // ─────────────────────────────────────────────────
         $tempDirectory = 'temp/' . Str::uuid();
         Storage::disk('local')->makeDirectory($tempDirectory);
 
@@ -110,8 +99,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
             $cleanFile = $this->removeMetadata($originalFile, $tempDirectory, $fileName);
 
             // ۳. آپلود به کانال Cache
-            $fileIdColumn = "telegram_file_id_{$this->quality}";
-            $cacheResult  = $telegram->uploadAudioToCacheChannel($cleanFile, $song);
+            $cacheResult = $telegram->uploadAudioToCacheChannel($cleanFile, $song);
 
             if ($cacheResult && !empty($cacheResult['file_id'])) {
                 // کش موفق: file_id ذخیره + ارسال با file_id
@@ -126,7 +114,11 @@ class ProcessMusicDownloadJob implements ShouldQueue
                     $song->artist_name
                 );
             } else {
-                // Fallback: کش نشد → مثل قبل مستقیم بفرست
+                // Fallback: کش نشد → مستقیم بفرست
+                Log::warning('Cache upload failed, sending directly', [
+                    'song_id' => $this->songId,
+                ]);
+
                 $telegram->sendAudio(
                     $this->chatId,
                     $cleanFile,
@@ -136,26 +128,29 @@ class ProcessMusicDownloadJob implements ShouldQueue
                 );
             }
 
-            // ۴. متن آهنگ
-            if ($song->lyrics) {
-                $telegram->sendMessage(
-                    $this->chatId,
-                    "🎤 متن آهنگ:\n\n" . $song->lyrics
-                );
-            }
-
-            // ۵. حذف پیام "در حال آماده‌سازی"
-            $telegram->deleteMessage($this->chatId, $this->messageId);
+            // ۴. متن آهنگ + حذف پیام "در حال آماده‌سازی"
+            $this->sendLyricsAndCleanup($telegram, $song);
         } finally {
-            // ۶. همیشه temp رو پاک کن (حتی اگه exception خورد)
+            // ۵. همیشه temp رو پاک کن
             Storage::disk('local')->deleteDirectory($tempDirectory);
         }
     }
 
     /**
-     * 🛡 وقتی همه retryها شکست خوردن، این متد اجرا میشه
-     * کاربر رو از خطا مطلع می‌کنیم
+     * ارسال متن آهنگ (اگه داشته باشه) + حذف پیام "در حال آماده‌سازی"
      */
+    private function sendLyricsAndCleanup(TelegramService $telegram, Song $song): void
+    {
+        if ($song->lyrics) {
+            $telegram->sendMessage(
+                $this->chatId,
+                "🎤 متن آهنگ:\n\n" . $song->lyrics
+            );
+        }
+
+        $telegram->deleteMessage($this->chatId, $this->messageId);
+    }
+
     public function failed(Throwable $exception): void
     {
         Log::error('Music download job failed permanently', [
@@ -175,7 +170,6 @@ class ProcessMusicDownloadJob implements ShouldQueue
                 []
             );
         } catch (Throwable $e) {
-            // اگه حتی ارسال پیام خطا هم شکست خورد، فقط log کن
             Log::error('Failed to update error message', [
                 'error' => $e->getMessage(),
             ]);

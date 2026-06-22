@@ -119,16 +119,15 @@ class TelegramService
             return null;
         }
 
+        // فقط فایل صوتی رو می‌فرستیم به کانال کش
+        // متن آهنگ رو جداگانه فقط به کاربر می‌فرستیم (نه به کانال کش)
+        // اینجوری کانال کش فقط audio message داره و شلوغ نمیشه
         $response = Http::attach('audio', fopen($filePath, 'r'), basename($filePath))
             ->post($this->apiUrl . '/sendAudio', [
                 'chat_id'   => $cacheChannelId,
                 'title'     => $song->title,
                 'performer' => $song->artist_name,
             ]);
-
-        if ($song->lyrics) {
-            $this->sendMessage($cacheChannelId, $song->lyrics);
-        }
 
         if (!$response->successful()) {
             return null;
