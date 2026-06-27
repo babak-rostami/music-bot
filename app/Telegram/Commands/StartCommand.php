@@ -20,7 +20,10 @@ class StartCommand implements CommandHandlerInterface
         $chatId = $message['chat']['id'];
         $firstName = $message['from']['first_name'];
 
-        $welcomeText = "سلام {$firstName}! 👋\n\nبه ربات جستجوی آهنگ خوش اومدی.\nیه بخش از متن آهنگ مورد نظرت رو بفرست تا برات پیداش کنم.";
+        $welcomeText = "سلام {$firstName}! 👋\n\n"
+            . "به ربات موزیک‌یاب خوش اومدی. 🎵\n\n"
+            . "یه تیکه از متن آهنگ رو برام بفرست؛ حتی اگه فقط چند کلمه ازش یادت مونده باشه.\n\n"
+            . "من آهنگ رو پیدا می‌کنم و فایلش رو برات می‌فرستم. 🚀";
 
         $this->telegramService->sendMessage($chatId, $welcomeText);
     }

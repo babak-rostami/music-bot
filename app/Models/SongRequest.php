@@ -30,28 +30,80 @@ class SongRequest extends Model
     public const STATUS_COMPLETED  = 'completed';
     public const STATUS_REJECTED   = 'rejected';
 
-    /**
-     * اسکوپ: فقط درخواست‌های در انتظار
-     */
+    // ─── Scopes ───────────────────────────────────────────────
     public function scopePending($query)
     {
         return $query->where('status', self::STATUS_PENDING);
     }
 
-    /**
-     * اسکوپ: فقط درخواست‌های یک کاربر خاص
-     */
+    public function scopeProcessing($query)
+    {
+        return $query->where('status', 'processing');
+    }
+
+    public function scopeCompleted($query)
+    {
+        return $query->where('status', 'completed');
+    }
+
+    public function scopeRejected($query)
+    {
+        return $query->where('status', 'rejected');
+    }
+
     public function scopeForUser($query, int $userId)
     {
         return $query->where('user_id', $userId);
     }
 
-    /**
-     * نام کامل کاربر (first_name + last_name)
-     */
+
+
+    // ─── Helpers ──────────────────────────────────────────────
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isProcessing(): bool
+    {
+        return $this->status === 'processing';
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->status === 'completed';
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->status === 'rejected';
+    }
+
+    public function getStatusLabelAttribute(): string
+    {
+        return match ($this->status) {
+            'pending'    => 'در انتظار',
+            'processing' => 'در حال آپلود',
+            'completed'  => 'آپلود شد',
+            'rejected'   => 'رد شده',
+            default      => $this->status,
+        };
+    }
+
+    public function getStatusColorAttribute(): string
+    {
+        return match ($this->status) {
+            'pending'    => 'yellow',
+            'processing' => 'blue',
+            'completed'  => 'green',
+            'rejected'   => 'red',
+            default      => 'gray',
+        };
+    }
+
     public function getFullNameAttribute(): string
     {
-        return trim(($this->first_name ?? '') . ' ' . ($this->last_name ?? ''));
+        return trim("{$this->first_name} {$this->last_name}") ?: ($this->username ?? 'ناشناس');
     }
 
     /**

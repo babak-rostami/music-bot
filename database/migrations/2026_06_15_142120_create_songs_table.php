@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->string('title');
             $table->string('artist_name');
-            $table->string('source_url')->unique();
+            $table->string('source_url')->nullable()->unique();
             $table->text('lyrics')->nullable();
             $table->bigInteger('downloads_count')->default(0);
             $table->string('telegram_file_id_128')->nullable();
@@ -23,6 +23,8 @@ return new class extends Migration
             $table->string('download_link_128')->nullable();
             $table->string('download_link_320')->nullable();
             $table->timestamps();
+
+            $table->index('created_at');
         });
     }
 

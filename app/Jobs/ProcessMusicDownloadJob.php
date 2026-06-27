@@ -28,7 +28,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
         public readonly int $songId,
         public readonly string $quality,
         public readonly int|string $chatId,
-        public readonly int $messageId,
+        public readonly int|null $messageId,
     ) {}
 
     public function middleware(): array
@@ -68,6 +68,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
 
             if ($response->successful()) {
                 // ✅ کش موفق
+                $song->increment('downloads_count');
                 $this->sendLyricsAndCleanup($telegram, $song);
                 return;
             }
@@ -107,25 +108,33 @@ class ProcessMusicDownloadJob implements ShouldQueue
                     $fileIdColumn => $cacheResult['file_id'],
                 ]);
 
-                $telegram->sendAudioByFileId(
+                $response = $telegram->sendAudioByFileId(
                     $this->chatId,
                     $cacheResult['file_id'],
                     $song->title,
                     $song->artist_name
                 );
+
+                if ($response->successful()) {
+                    $song->increment('downloads_count');
+                }
             } else {
                 // Fallback: کش نشد → مستقیم بفرست
                 Log::warning('Cache upload failed, sending directly', [
                     'song_id' => $this->songId,
                 ]);
 
-                $telegram->sendAudio(
+                $response = $telegram->sendAudio(
                     $this->chatId,
                     $cleanFile,
                     $fileName,
                     $song->title,
                     $song->artist_name
                 );
+
+                if ($response->successful()) {
+                    $song->increment('downloads_count');
+                }
             }
 
             // ۴. متن آهنگ + حذف پیام "در حال آماده‌سازی"
@@ -148,7 +157,9 @@ class ProcessMusicDownloadJob implements ShouldQueue
             );
         }
 
-        $telegram->deleteMessage($this->chatId, $this->messageId);
+        if ($this->messageId) {
+            $telegram->deleteMessage($this->chatId, $this->messageId);
+        }
     }
 
     public function failed(Throwable $exception): void
@@ -163,12 +174,14 @@ class ProcessMusicDownloadJob implements ShouldQueue
 
         try {
             $telegram = app(TelegramService::class);
-            $telegram->editMessageText(
-                $this->chatId,
-                $this->messageId,
-                '❌ خطا در دانلود یا پردازش فایل. لطفاً دوباره تلاش کنید.',
-                []
-            );
+            if ($this->messageId) {
+                $telegram->editMessageText(
+                    $this->chatId,
+                    $this->messageId,
+                    '❌ خطا در دانلود یا پردازش فایل. لطفاً دوباره تلاش کنید.',
+                    []
+                );
+            }
         } catch (Throwable $e) {
             Log::error('Failed to update error message', [
                 'error' => $e->getMessage(),

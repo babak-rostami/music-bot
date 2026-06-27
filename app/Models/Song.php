@@ -19,6 +19,13 @@ class Song extends Model
         'download_link_320',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'downloads_count' => 'integer',
+        ];
+    }
+
     use ElasticsearchableTrait;
 
     protected static function elasticsearchProperties(): array
@@ -49,5 +56,14 @@ class Song extends Model
     public static function elasticsearchIndex(): string
     {
         return 'songs';
+    }
+
+    public function scopeSearch($query, string $term)
+    {
+        return $query->where(function ($q) use ($term) {
+            $q->where('title', 'LIKE', "%{$term}%")
+                ->orWhere('artist_name', 'LIKE', "%{$term}%")
+                ->orWhere('source_url', 'LIKE', "%{$term}%");
+        });
     }
 }
