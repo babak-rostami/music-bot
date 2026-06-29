@@ -4,10 +4,8 @@ x-queue-worker: &queue-worker
   working_dir: /var/www
   volumes:
     - ./:/var/www
-  depends_on:
-    - redis
   networks:
-    - musicbot
+    - music-network
 
 x-download-worker: &download-worker
   <<: *queue-worker
@@ -24,37 +22,38 @@ services:
     build:
       context: .
       dockerfile: docker/php/Dockerfile
-
+    image: musicbot-app
     container_name: musicbot-app
     restart: unless-stopped
     working_dir: /var/www
+    command: php-fpm
     volumes:
       - ./:/var/www
-    command: php-fpm
-    depends_on:
-      - postgres
     networks:
-      - musicbot
+      music-network:
+        aliases:
+          - musicbot-app
+
+  queue-download:
+    <<: *download-worker
+    container_name: musicbot-queue-download
 
   queue-crawl:
     <<: *crawl-worker
-
-  queue-download-1:
-    <<: *download-worker
+    container_name: musicbot-queue-crawl
 
   scheduler:
     image: musicbot-app
+    container_name: musicbot-scheduler
     restart: unless-stopped
     working_dir: /var/www
+    command: php artisan schedule:work
     volumes:
       - ./:/var/www
-    command: php artisan schedule:work
     depends_on:
       - app
-      - redis
-      - postgres
     networks:
-      - musicbot
+      - music-network
 
   nginx:
     image: nginx:1.31
@@ -65,78 +64,11 @@ services:
     volumes:
       - ./:/var/www
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
-
     depends_on:
       - app
-
     networks:
-      - musicbot
-
-  postgres:
-    # PostgreSQL 18
-    image: postgres:18
-    container_name: musicbot-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql
-    networks:
-      - musicbot
-
-  pgadmin:
-    # رابط گرافیکی PostgreSQL
-    # مثل phpMyAdmin
-    image: dpage/pgadmin4
-    container_name: musicbot-pgadmin
-    restart: unless-stopped
-    environment:
-      # ایمیل ورود به pgAdmin
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
-      # رمز ورود
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
-    ports:
-      # آدرس:
-      #
-      # http://IP:5050
-      #
-      - "5050:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    depends_on:
-      - postgres
-    networks:
-      - musicbot
-
-  redis:
-    image: redis:8.8
-    container_name: musicbot-redis
-    restart: unless-stopped
-    volumes:
-      - redis_data:/data
-    networks:
-      - musicbot
-
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:9.4.2
-    container_name: elasticsearch
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-    volumes:
-      - es_data:/usr/share/elasticsearch/data
-    networks:
-      - musicbot
+      - music-network
 
 networks:
-  musicbot:
-volumes:
-  postgres_data:
-  pgadmin_data:
-  redis_data:
-  es_data:
+  music-network:
+    external: true
