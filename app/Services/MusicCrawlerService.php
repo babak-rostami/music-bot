@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Helpers\SongSlugHelper;
 use App\Jobs\CrawlLastMusicJob;
 use App\Jobs\CrawlMusicJob;
 use App\Models\Song;
@@ -61,6 +62,7 @@ class MusicCrawlerService
             ['source_url' => $music['musicUrl']],
             [
                 'title' => $music['musicName'],
+                'slug' => SongSlugHelper::make($music['musicName'] . ' ' . $music['singer']),
                 'artist_name' => $music['singer'],
                 'lyrics' => (empty(trim($music['lyrics'])) || $music['lyrics'] === '...') ? null : $music['lyrics'],
                 'download_link_128' => $music['dl_link_128'],
@@ -82,6 +84,7 @@ class MusicCrawlerService
             ['source_url' => $music['musicUrl']],
             [
                 'title' => $music['musicName'],
+                'slug' => SongSlugHelper::make($music['musicName'] . ' ' . $music['singer']),
                 'artist_name' => $music['singer'],
                 'lyrics' => (empty(trim($music['lyrics'])) || $music['lyrics'] === '...') ? null : $music['lyrics'],
                 'download_link_128' => $music['dl_link_128'],

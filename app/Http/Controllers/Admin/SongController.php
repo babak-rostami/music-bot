@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Helpers\SongSlugHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Song;
 use Babak\Elasticsearch\Facades\Elasticsearch;
@@ -56,6 +57,9 @@ class SongController extends Controller
             'download_link_128'    => ['nullable', 'url', 'max:500'],
             'download_link_320'    => ['nullable', 'url', 'max:500'],
         ]);
+
+        $slugSource = $validated['title'] . ' ' . $validated['artist_name'];
+        $validated['slug'] = SongSlugHelper::make($slugSource);
 
         $song = Song::create($validated);
 

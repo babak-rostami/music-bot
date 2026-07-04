@@ -1,5 +1,6 @@
 <?php
 
+use App\Helpers\SongSlugHelper;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\LoginController;
 use App\Http\Controllers\Admin\SongController;
@@ -10,32 +11,25 @@ use App\Models\Song;
 use App\Models\SongRequest;
 use Babak\Elasticsearch\Facades\Elasticsearch;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Symfony\Component\DomCrawler\Crawler;
 
 Route::get('/', function () {
+    // $songs = Song::where('slug', null)->get();
+    // foreach ($songs as $song) {
+    //     $song->slug = SongSlugHelper::make($song->title);
+    //     $song->update();
+    // }
     return view('welcome');
-});
-
-Route::get('/fix-crawl-info', function () {
-    dd('start fixing crawl info');
-    // تمام آهنگ‌ها را در دسته‌های ۱۰۰ تایی پردازش می‌کنیم تا حافظه پر نشود
-    Song::chunk(100, function ($songs) {
-        foreach ($songs as $song) {
-            if (empty($song->lyrics) || $song->lyrics === '...' || trim($song->lyrics) === '') {
-                $song->lyrics = null;
-                $song->save();
-            }
-        }
-    });
 });
 
 // ─── روت‌های ادمین ───────────────────────────────────────────
 Route::prefix('admin_page')->name('admin.')->group(function () {
 
     // لاگین (بدون نیاز به احراز هویت)
-    Route::get('/login_admin_ok', [LoginController::class, 'showLoginForm'])->name('login');
+    Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
     Route::post('/login', [LoginController::class, 'login'])->name('login.send');
 
     // روت‌های محافظت‌شده
@@ -55,14 +49,4 @@ Route::prefix('admin_page')->name('admin.')->group(function () {
         Route::resource('song-requests', SongRequestController::class)->except(['create', 'store', 'edit']);
         Route::post('song-requests/{songRequest}/update-status', [SongRequestController::class, 'updateStatus'])->name('song-requests.update-status');
     });
-});
-
-route::get('test', function () {
-    $songs = Song::where('telegram_file_id_128', '!=', null)
-        ->where('telegram_file_id_320', '!=', null)->get();
-    foreach ($songs as $song) {
-        $song->telegram_file_id_128 = null;
-        $song->telegram_file_id_320 = null;
-        $song->save();
-    }
 });

@@ -9,6 +9,7 @@ class Song extends Model
 {
     protected $fillable = [
         'title',
+        'slug',
         'artist_name',
         'source_url',
         'lyrics',
