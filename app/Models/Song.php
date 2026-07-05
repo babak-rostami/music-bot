@@ -18,6 +18,7 @@ class Song extends Model
         'telegram_file_id_320',
         'download_link_128',
         'download_link_320',
+        'aparat_link',
     ];
 
     protected function casts(): array

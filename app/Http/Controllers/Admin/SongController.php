@@ -56,6 +56,7 @@ class SongController extends Controller
             'telegram_file_id_320' => ['nullable', 'string', 'max:255'],
             'download_link_128'    => ['nullable', 'url', 'max:500'],
             'download_link_320'    => ['nullable', 'url', 'max:500'],
+            'aparat_link'          => ['nullable'],
         ]);
 
         $slugSource = $validated['title'] . ' ' . $validated['artist_name'];
@@ -85,6 +86,7 @@ class SongController extends Controller
             'telegram_file_id_320' => ['nullable', 'string', 'max:255'],
             'download_link_128'    => ['nullable', 'url', 'max:500'],
             'download_link_320'    => ['nullable', 'url', 'max:500'],
+            'aparat_link'          => ['nullable'],
         ]);
 
         $song->update($validated);

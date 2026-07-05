@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::table('songs', function (Blueprint $table) {
             $table->string('cover_image')->nullable();
+            $table->string('aparat_link')->nullable();
             $table->unsignedBigInteger('views_count')->default(0);
             $table->text('description')->nullable();
 
@@ -31,6 +32,7 @@ return new class extends Migration
 
             $table->dropColumn([
                 'cover_image',
+                'aparat_link',
                 'views_count',
                 'description',
             ]);
