@@ -16,6 +16,8 @@ class Song extends Model
         'downloads_count',
         'telegram_file_id_128',
         'telegram_file_id_320',
+        'bale_file_id_128',
+        'bale_file_id_320',
         'download_link_128',
         'download_link_320',
         'aparat_link',
