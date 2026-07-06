@@ -3,19 +3,23 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessBaleMusicDownloadJob;
 use App\Jobs\ProcessMusicDownloadJob;
 use App\Models\Song;
 use App\Models\SongRequest;
+use App\Services\BaleService;
 use App\Services\TelegramService;
 use Illuminate\Http\Request;
 
 class SongRequestController extends Controller
 {
     private $telegramService;
+    private $baleService;
 
-    public function __construct(TelegramService $telegramService)
+    public function __construct(TelegramService $telegramService, BaleService $baleService)
     {
         $this->telegramService = $telegramService;
+        $this->baleService = $baleService;
     }
 
     public function index(Request $request)
@@ -71,16 +75,29 @@ class SongRequestController extends Controller
             if ($request->admin_note != null && $request->status == 'completed') {
                 $song = Song::find($request->admin_note);
                 if (isset($song)) {
-                    ProcessMusicDownloadJob::dispatch(
-                        $song->id,
-                        '320',
-                        $songRequest->chat_id,
-                        null,
-                    )->onQueue('download-music');
-                    $this->telegramService->sendMessage(
-                        $songRequest->chat_id,
-                        '❤️آهنگی که میخواستی برات آپلود کردم'
-                    );
+                    if ($songRequest->platform == "telegram") {
+                        ProcessMusicDownloadJob::dispatch(
+                            $song->id,
+                            '320',
+                            $songRequest->chat_id,
+                            null,
+                        )->onQueue('download-music');
+                        $this->telegramService->sendMessage(
+                            $songRequest->chat_id,
+                            '❤️آهنگی که میخواستی برات آپلود کردم'
+                        );
+                    } elseif ($songRequest->platform == "bale") {
+                        ProcessBaleMusicDownloadJob::dispatch(
+                            $song->id,
+                            '320',
+                            $songRequest->chat_id,
+                            null,
+                        )->onQueue('download-music');
+                        $this->baleService->sendMessage(
+                            $songRequest->chat_id,
+                            '❤️آهنگی که میخواستی برات آپلود کردم'
+                        );
+                    }
                 }
             }
         }

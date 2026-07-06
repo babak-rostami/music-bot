@@ -55,11 +55,11 @@ return [
             'url'     => 'https://ble.ir/music_jangi',
             'chat_id' => '@music_jangi',
         ],
-        [
-            'name'    => 'خبر فوری | جنگی',
-            'url'     => 'https://ble.ir/jangi_news',
-            'chat_id' => '@jangi_news',
-        ],
+        // [
+        //     'name'    => 'خبر فوری | جنگی',
+        //     'url'     => 'https://ble.ir/jangi_news',
+        //     'chat_id' => '@jangi_news',
+        // ],
     ],
 
     /*

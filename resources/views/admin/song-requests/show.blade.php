@@ -26,11 +26,11 @@
                     <div class="p-4 bg-gray-50 rounded-xl">
                         <p class="text-xs text-gray-500 mb-1">وضعیت</p>
                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                {{ $songRequest->status === 'pending' ? 'bg-yellow-100 text-yellow-800' : '' }}
-                                {{ $songRequest->status === 'processing' ? 'bg-blue-100 text-blue-800' : '' }}
-                                {{ $songRequest->status === 'completed' ? 'bg-green-100 text-green-800' : '' }}
-                                {{ $songRequest->status === 'rejected' ? 'bg-red-100 text-red-800' : '' }}
-                            ">{{ $songRequest->status_label }}</span>
+                                    {{ $songRequest->status === 'pending' ? 'bg-yellow-100 text-yellow-800' : '' }}
+                                    {{ $songRequest->status === 'processing' ? 'bg-blue-100 text-blue-800' : '' }}
+                                    {{ $songRequest->status === 'completed' ? 'bg-green-100 text-green-800' : '' }}
+                                    {{ $songRequest->status === 'rejected' ? 'bg-red-100 text-red-800' : '' }}
+                                ">{{ $songRequest->status_label }}</span>
                     </div>
                     <div class="p-4 bg-gray-50 rounded-xl">
                         <p class="text-xs text-gray-500 mb-1">تاریخ ثبت</p>
@@ -51,6 +51,8 @@
             <!-- تغییر وضعیت + یادداشت -->
             <div class="mt-6 pt-6 border-t border-gray-200">
                 <h4 class="text-sm font-semibold text-gray-900 mb-4">تغییر وضعیت و یادداشت</h4>
+                <p>برای ارسال آهنگ به کاربری که درخواست کرده:</p>
+                <p>ای دی آهنگ بذار و وضعیت آپلود شد کن</p>
                 <form method="POST" action="{{ route('admin.song-requests.update-status', $songRequest) }}">
                     @csrf
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -69,7 +71,7 @@
                             </select>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1.5">یادداشت ادمین</label>
+                            <label class="block text-sm font-medium text-gray-700 mb-1.5">ای دی آهنگ</label>
                             <input type="text" name="admin_note" value="{{ old('admin_note', $songRequest->admin_note) }}"
                                 placeholder="یادداشت اختیاری..."
                                 class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">

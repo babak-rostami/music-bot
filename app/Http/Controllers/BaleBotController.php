@@ -7,6 +7,8 @@ use App\Services\BaleService;
 use App\Services\SongUploadService;
 use App\BaleBot\Actions\BaleShowDownloadOptionsAction;
 use App\BaleBot\MessageProcessor;
+use App\Models\SongRequest;
+use App\Services\AdminNotifier;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -242,14 +244,15 @@ class BaleBotController extends Controller
         }
 
         try {
-            $request = \App\Models\SongRequest::create([
+            $request = SongRequest::create([
                 'user_id'    => $payload['from']['id'],
                 'username'   => $payload['from']['username'] ?? null,
                 'first_name' => $payload['from']['first_name'] ?? null,
                 'last_name'  => $payload['from']['last_name'] ?? null,
                 'chat_id'    => $payload['chat_id'],
                 'query'      => $payload['query'],
-                'status'     => \App\Models\SongRequest::STATUS_PENDING,
+                'status'     => SongRequest::STATUS_PENDING,
+                'platform'     => 'bale'
             ]);
 
             $this->baleService->editMessageText(
@@ -263,7 +266,7 @@ class BaleBotController extends Controller
             );
 
             $this->baleService->answerCallbackQuery($callbackQueryId, '✅ درخواست ثبت شد!');
-            app(\App\Services\AdminNotifier::class)->notifyNewSongRequest($request);
+            app(AdminNotifier::class)->notifyNewSongRequest($request);
         } catch (\Throwable $e) {
             Log::error('Failed to save song request', ['error' => $e->getMessage()]);
             $this->baleService->answerCallbackQuery($callbackQueryId, '❌ خطا در ثبت درخواست');

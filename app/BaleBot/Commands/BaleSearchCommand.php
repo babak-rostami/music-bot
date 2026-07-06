@@ -43,7 +43,7 @@ class BaleSearchCommand
                     . "💎 وقتی آماده شد، همینجا بهت خبر میدم!"
             );
 
-            $this->adminNotifier->notifyNewSongRequest($request);
+            $this->adminNotifier->notifyNewSongRequest($request, 'bale');
 
             return;
         }
@@ -88,6 +88,7 @@ class BaleSearchCommand
             'chat_id'    => $chatId,
             'query'      => $query,
             'status'     => SongRequest::STATUS_PENDING,
+            'platform'     => 'bale',
         ]);
     }
 }

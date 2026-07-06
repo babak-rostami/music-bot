@@ -7,24 +7,47 @@ use Illuminate\Support\Facades\Log;
 
 class AdminNotifier
 {
-    public function __construct(protected TelegramService $telegram) {}
+    public function __construct(protected TelegramService $telegram, protected BaleService $bale) {}
 
     /**
      * نوتیفیکیشن به کانال ادمین وقتی درخواست آهنگ جدید ثبت میشه
      *
      * اگه کانال cache تنظیم نشده باشه، silently skip می‌کنه.
      */
-    public function notifyNewSongRequest(SongRequest $request): void
+    public function notifyNewSongRequest(SongRequest $request, $platform): void
+    {
+        if ($platform == 'telegram') {
+            $this->notifyNewSongRequestTelegram($request);
+        } elseif ($platform == 'bale') {
+            $this->notifyNewSongRequestBale($request);
+        }
+    }
+
+    private function notifyNewSongRequestTelegram($request)
     {
         $channelId = config('telegram.cache_channel_id');
-
         if (!$channelId) {
             return;
         }
-
         try {
             $message = $this->buildSongRequestMessage($request);
             $this->telegram->sendMessage($channelId, $message, null, 'HTML');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send admin notification for song request', [
+                'request_id' => $request->id,
+                'error'      => $e->getMessage(),
+            ]);
+        }
+    }
+    private function notifyNewSongRequestBale($request)
+    {
+        $channelId = config('telegram.bale_cache_channel_id');
+        if (!$channelId) {
+            return;
+        }
+        try {
+            $message = $this->buildSongRequestMessage($request);
+            $this->bale->sendMessage($channelId, $message, null, 'HTML');
         } catch (\Throwable $e) {
             Log::warning('Failed to send admin notification for song request', [
                 'request_id' => $request->id,
@@ -67,11 +90,6 @@ class AdminNotifier
 
         $message .= "\n└ 📦 کل از ابتدا: <b>{$totalAll}</b>\n\n"
             . "🕐 <i>" . $request->created_at->format('Y-m-d H:i') . "</i>";
-
-        // ── لینک سریع برای پیام به کاربر (اگه username داره) ──
-        if ($request->username) {
-            $message .= "\n💬 <a href=\"https://t.me/" . e($request->username) . "\">پیام به کاربر</a>";
-        }
 
         return $message;
     }

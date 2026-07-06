@@ -41,6 +41,7 @@ class RequestSongAction
                 'chat_id'    => $payload['chat_id'],
                 'query'      => $payload['query'],
                 'status'     => SongRequest::STATUS_PENDING,
+                'platform'     => 'telegram'
             ]);
 
             // پیام تأیید برای کاربر (پیام لیست آهنگ‌ها رو عوض می‌کنیم)
@@ -58,7 +59,7 @@ class RequestSongAction
             $this->telegram->answerCallbackQuery($callbackQueryId, '✅ درخواست ثبت شد!');
 
             // نوتیفیکیشن به کانال ادمین
-            $this->adminNotifier->notifyNewSongRequest($request);
+            $this->adminNotifier->notifyNewSongRequest($request, 'telegram');
         } catch (\Throwable $e) {
             Log::error('Failed to save song request', [
                 'error'   => $e->getMessage(),

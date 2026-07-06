@@ -15,6 +15,7 @@ class SongRequest extends Model
         'query',
         'status',
         'admin_note',
+        'platform',
     ];
 
     protected $casts = [

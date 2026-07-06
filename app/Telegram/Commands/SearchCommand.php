@@ -45,7 +45,7 @@ class SearchCommand implements CommandHandlerInterface
             );
 
             // نوتیفیکیشن به ادمین
-            $this->adminNotifier->notifyNewSongRequest($request);
+            $this->adminNotifier->notifyNewSongRequest($request, 'telegram');
 
             return;
         }
@@ -94,6 +94,7 @@ class SearchCommand implements CommandHandlerInterface
             'chat_id'    => $chatId,
             'query'      => $query,
             'status'     => SongRequest::STATUS_PENDING,
+            'platform'     => 'telegram'
         ]);
     }
 }
