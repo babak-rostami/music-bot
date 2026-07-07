@@ -1,6 +1,7 @@
 <?php
 
 use App\Helpers\SongSlugHelper;
+use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\LoginController;
 use App\Http\Controllers\Admin\SongController;
@@ -48,5 +49,12 @@ Route::prefix('admin_page')->name('admin.')->group(function () {
         // مدیریت درخواست‌های آپلود
         Route::resource('song-requests', SongRequestController::class)->except(['create', 'store', 'edit']);
         Route::post('song-requests/{songRequest}/update-status', [SongRequestController::class, 'updateStatus'])->name('song-requests.update-status');
+
+
+        Route::get('activity-logs', [ActivityLogController::class, 'index'])->name('activity-logs.index');
+        Route::get('activity-logs/{activityLog}', [ActivityLogController::class, 'show'])->name('activity-logs.show');
+        Route::delete('activity-logs/{activityLog}', [ActivityLogController::class, 'destroy'])->name('activity-logs.destroy');
+        Route::post('activity-logs/clear', [ActivityLogController::class, 'clear'])->name('activity-logs.clear');
+        Route::get('activity-logs/stats/json', [ActivityLogController::class, 'stats'])->name('activity-logs.stats');
     });
 });

@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\BaleMembershipService;
-use App\Services\BaleService;
-use App\Services\SongUploadService;
 use App\BaleBot\Actions\BaleShowDownloadOptionsAction;
 use App\BaleBot\MessageProcessor;
 use App\Models\SongRequest;
 use App\Services\AdminNotifier;
+use App\Services\BaleMembershipService;
+use App\Services\BaleService;
+use App\Services\BotUserService;
+use App\Services\NotificationService;
+use App\Services\SongUploadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -20,19 +22,25 @@ class BaleBotController extends Controller
     private BaleShowDownloadOptionsAction $showDownloadOptionsAction;
     private MessageProcessor $messageProcessor;
     private BaleMembershipService $membershipService;
+    private NotificationService $notifier;
+    private BotUserService $botUserService;
 
     public function __construct(
         BaleService $baleService,
         SongUploadService $songUploadService,
         BaleShowDownloadOptionsAction $showDownloadOptionsAction,
         MessageProcessor $messageProcessor,
-        BaleMembershipService $membershipService
+        BaleMembershipService $membershipService,
+        NotificationService $notifier,
+        BotUserService $botUserService,
     ) {
-        $this->baleService = $baleService;
-        $this->songUploadService = $songUploadService;
-        $this->showDownloadOptionsAction = $showDownloadOptionsAction;
-        $this->messageProcessor = $messageProcessor;
-        $this->membershipService = $membershipService;
+        $this->baleService                = $baleService;
+        $this->songUploadService          = $songUploadService;
+        $this->showDownloadOptionsAction  = $showDownloadOptionsAction;
+        $this->messageProcessor           = $messageProcessor;
+        $this->membershipService          = $membershipService;
+        $this->notifier                   = $notifier;
+        $this->botUserService             = $botUserService;
     }
 
     /**
@@ -43,15 +51,21 @@ class BaleBotController extends Controller
     {
         $payload = $request->all();
 
-        // ۱. بررسی callback (کلیک روی دکمه)
-        if (isset($payload['callback_query'])) {
-            $this->handleCallback($request);
-            return response()->json(['status' => 'ok']);
-        }
+        try {
+            // ۱. بررسی callback (کلیک روی دکمه)
+            if (isset($payload['callback_query'])) {
+                $this->handleCallback($request);
+                return response()->json(['status' => 'ok']);
+            }
 
-        // ۲. بررسی پیام جدید
-        if (isset($payload['message'])) {
-            $this->handleMessage($request);
+            // ۲. بررسی پیام جدید
+            if (isset($payload['message'])) {
+                $this->handleMessage($request);
+            }
+        } catch (\Throwable $e) {
+            // ── ثبت خطای کلی وبهوک ──
+            $this->notifier->error('وبهوک بله', $e->getMessage(), 'bale');
+            Log::error('Bale webhook error', ['error' => $e->getMessage()]);
         }
 
         return response()->json(['status' => 'ok']);
@@ -75,6 +89,14 @@ class BaleBotController extends Controller
         $userId   = $message['from']['id'];
         $userName = $message['from']['first_name'] ?? $message['from']['username'] ?? 'دوست عزیز';
         $chatId   = $chat['id'];
+
+        // ✅ ثبت/به‌روزرسانی کاربر + نوتیفیکیشن «پیام دریافت شد»
+        try {
+            $this->botUserService->registerFromMessage($message, 'bale');
+            $this->notifier->messageReceived($message, 'bale');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to register/notify bale user', ['error' => $e->getMessage()]);
+        }
 
         $missing = $this->membershipService->getMissingChannels($userId);
 
@@ -101,12 +123,12 @@ class BaleBotController extends Controller
 
     private function handleCallback(Request $request): void
     {
-        $callback  = $request->input('callback_query');
-        $userId    = $callback['from']['id'];
-        $userName  = $callback['from']['first_name'] ?? $callback['from']['username'] ?? 'دوست عزیز';
-        $chatId    = $callback['message']['chat']['id'];
-        $messageId = $callback['message']['message_id'];
-        $data      = $callback['data'] ?? '';
+        $callback   = $request->input('callback_query');
+        $userId     = $callback['from']['id'];
+        $userName   = $callback['from']['first_name'] ?? $callback['from']['username'] ?? 'دوست عزیز';
+        $chatId     = $callback['message']['chat']['id'];
+        $messageId  = $callback['message']['message_id'];
+        $data       = $callback['data'] ?? '';
         $callbackId = $callback['id']; // شناسه callback برای answer فوری
 
         // ۱. دکمه "بررسی عضویت"
@@ -252,7 +274,7 @@ class BaleBotController extends Controller
                 'chat_id'    => $payload['chat_id'],
                 'query'      => $payload['query'],
                 'status'     => SongRequest::STATUS_PENDING,
-                'platform'     => 'bale'
+                'platform'   => 'bale',
             ]);
 
             $this->baleService->editMessageText(
@@ -266,9 +288,13 @@ class BaleBotController extends Controller
             );
 
             $this->baleService->answerCallbackQuery($callbackQueryId, '✅ درخواست ثبت شد!');
-            app(AdminNotifier::class)->notifyNewSongRequest($request);
+
+            // ✅ نوتیفیکیشن درخواست آهنگ به ادمین
+            $this->notifier->songRequest($payload['query'], $payload['from'], $payload['chat_id'], 'bale');
+            app(AdminNotifier::class)->notifyNewSongRequest($request, 'bale');
         } catch (\Throwable $e) {
             Log::error('Failed to save song request', ['error' => $e->getMessage()]);
+            $this->notifier->error('ثبت درخواست آهنگ (بله)', $e->getMessage(), 'bale');
             $this->baleService->answerCallbackQuery($callbackQueryId, '❌ خطا در ثبت درخواست');
         }
     }
@@ -316,7 +342,9 @@ class BaleBotController extends Controller
     private function deleteLastJoinMessage(int|string $chatId, int $userId): void
     {
         $lastMessageId = Cache::pull($this->lastJoinMessageKey($userId));
-        if (!$lastMessageId) return;
+        if (!$lastMessageId) {
+            return;
+        }
 
         $response = $this->baleService->deleteMessage($chatId, (int) $lastMessageId);
         if (!$response->successful()) {

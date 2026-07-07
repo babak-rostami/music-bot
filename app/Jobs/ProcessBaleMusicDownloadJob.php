@@ -2,8 +2,11 @@
 
 namespace App\Jobs;
 
+use App\Models\ActivityLog;
 use App\Models\Song;
 use App\Services\BaleService;
+use App\Services\BotUserService;
+use App\Services\NotificationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -38,19 +41,33 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         return [
             (new WithoutOverlapping("bale-song-{$this->songId}-{$this->quality}"))
                 ->dontRelease()
-                ->expireAfter(600)
+                ->expireAfter(600),
         ];
     }
 
-    public function handle(BaleService $bale): void
-    {
+    /**
+     * @param BaleService         $bale
+     * @param NotificationService $notifier
+     * @param BotUserService      $botUserService
+     */
+    public function handle(
+        BaleService $bale,
+        NotificationService $notifier,
+        BotUserService $botUserService,
+    ): void {
         $song = Song::find($this->songId);
 
         if (!$song) {
+            $notifier->error('جاب دانلود آهنگ', 'آهنگ پیدا نشد', 'bale', [
+                'song_id' => $this->songId,
+            ]);
             Log::warning('Song not found in Bale download job', ['song_id' => $this->songId]);
             $this->releaseLock();
             return;
         }
+
+        // در چت خصوصی: chatId == userId
+        $userId = (int) $this->chatId;
 
         $fileIdColumn = "bale_file_id_{$this->quality}";
         $cachedFileId = $song->{$fileIdColumn};
@@ -68,15 +85,27 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
 
             if ($response->successful()) {
                 $song->increment('downloads_count');
-                $this->sendLyricsAndCleanup($bale, $song);
+                $this->onSendSuccess($bale, $notifier, $botUserService, $song, $userId);
                 $this->releaseLock();
                 return;
             }
 
-            Log::warning('Cached Bale file_id invalid', [
-                'song_id' => $this->songId,
-                'quality' => $this->quality,
-            ]);
+            // ❌ file_id نامعتبر
+            $this->onSendFailure(
+                $response,
+                $notifier,
+                $botUserService,
+                $song,
+                $userId,
+                'file_id کش‌شده نامعتبر'
+            );
+
+            // اگر کاربر بلاک کرده → ادامه‌ی تلاش بی‌فایده است
+            if (BotUserService::isBlockedError($response)) {
+                $this->releaseLock();
+                return;
+            }
+
             $song->update([$fileIdColumn => null]);
         }
 
@@ -104,11 +133,14 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
                     $song->title,
                     $song->artist_name
                 );
-
-                if ($response->successful()) {
-                    $song->increment('downloads_count');
-                }
             } else {
+                $notifier->log(
+                    ActivityLog::TYPE_DOWNLOAD_STARTED,
+                    "آپلود به کانال کش بله ناموفق، ارسال مستقیم",
+                    ['song_id' => $this->songId],
+                    ActivityLog::LEVEL_WARNING,
+                    'bale'
+                );
                 Log::warning('Bale cache upload failed, sending directly', ['song_id' => $this->songId]);
 
                 $response = $bale->sendAudio(
@@ -118,27 +150,80 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
                     $song->title,
                     $song->artist_name
                 );
-
-                if ($response->successful()) {
-                    $song->increment('downloads_count');
-                }
             }
 
-            $this->sendLyricsAndCleanup($bale, $song);
+            // ── بررسی نتیجه نهایی ارسال ──
+            if ($response->successful()) {
+                $song->increment('downloads_count');
+                $this->onSendSuccess($bale, $notifier, $botUserService, $song, $userId);
+            } else {
+                $this->onSendFailure(
+                    $response,
+                    $notifier,
+                    $botUserService,
+                    $song,
+                    $userId,
+                    $response->json('description', 'خطای ناشناخته')
+                );
+            }
         } finally {
             Storage::disk('local')->deleteDirectory($tempDirectory);
             $this->releaseLock();
         }
     }
 
-    private function sendLyricsAndCleanup(BaleService $bale, Song $song): void
-    {
+    // ─────────────────────────────────────────────────
+    // Helper: ارسال موفق
+    // ─────────────────────────────────────────────────
+
+    private function onSendSuccess(
+        BaleService $bale,
+        NotificationService $notifier,
+        BotUserService $botUserService,
+        Song $song,
+        int $userId,
+    ): void {
         if ($song->lyrics) {
             $bale->sendMessage($this->chatId, "🎤 متن آهنگ:\n\n" . $song->lyrics);
         }
-
         if ($this->messageId) {
             $bale->deleteMessage($this->chatId, $this->messageId);
+        }
+
+        // ✅ نوتیفیکیشن + ریست شمارش خطا
+        $notifier->songSent($song, $this->chatId, $this->quality, 'bale', $userId);
+        $botUserService->recordSuccessfulSend($userId, 'bale');
+    }
+
+    // ─────────────────────────────────────────────────
+    // Helper: ارسال ناموفق
+    // ─────────────────────────────────────────────────
+
+    private function onSendFailure(
+        $response,
+        NotificationService $notifier,
+        BotUserService $botUserService,
+        Song $song,
+        int $userId,
+        string $error,
+    ): void {
+        // ❌ نوتیفیکیشن خطا + ثبت خطای ارسال
+        $notifier->songSendFailed($song, $this->chatId, $this->quality, $error, 'bale', $userId);
+        $botUserService->recordFailedSend($userId, 'bale');
+
+        // به کاربر اطلاع بده
+        if ($this->messageId) {
+            $bale = app(BaleService::class);
+            try {
+                $bale->editMessageText(
+                    $this->chatId,
+                    $this->messageId,
+                    '❌ خطا در ارسال. لطفاً دوباره تلاش کنید.',
+                    []
+                );
+            } catch (Throwable $e) {
+                Log::warning('Could not edit error message', ['error' => $e->getMessage()]);
+            }
         }
     }
 
@@ -163,6 +248,23 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         ]);
 
         $this->releaseLock();
+
+        // ✅ نوتیفیکیشن خطای دائمی
+        try {
+            app(NotificationService::class)->error(
+                'جاب دانلود آهنگ بله (شکست دائمی)',
+                $exception->getMessage(),
+                'bale',
+                [
+                    'song_id'    => $this->songId,
+                    'quality'    => $this->quality,
+                    'chat_id'    => $this->chatId,
+                    'message_id' => $this->messageId,
+                ]
+            );
+        } catch (Throwable $e) {
+            // نادیده
+        }
 
         try {
             $bale = app(BaleService::class);

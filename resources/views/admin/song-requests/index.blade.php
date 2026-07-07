@@ -53,7 +53,7 @@
                             <td class="py-3 px-5">
                                 <p class="text-gray-700">{{ $req->full_name }}</p>
                                 @if($req->username)
-                                    <p class="text-xs text-gray-400" dir="ltr">@{{ $req->username }}</p>
+                                    <p class="text-xs text-gray-400" dir="ltr">{{ $req->username }}</p>
                                 @endif
                             </td>
                             <td class="py-3 px-5">

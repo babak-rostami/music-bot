@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\BotUserService;
 use App\Services\MembershipService;
+use App\Services\NotificationService;
 use App\Services\SongUploadService;
 use App\Services\TelegramService;
 use App\Telegram\Actions\RequestSongAction;
@@ -20,6 +22,8 @@ class TelBotController extends Controller
     private MessageProcessor $messageProcessor;
     private MembershipService $membershipService;
     private RequestSongAction $requestSongAction;
+    private NotificationService $notifier;
+    private BotUserService $botUserService;
 
     public function __construct(
         TelegramService $telegramService,
@@ -27,25 +31,35 @@ class TelBotController extends Controller
         ShowDownloadOptionsAction $showDownloadOptionsAction,
         MessageProcessor $messageProcessor,
         MembershipService $membershipService,
-        RequestSongAction $requestSongAction
+        RequestSongAction $requestSongAction,
+        NotificationService $notifier,
+        BotUserService $botUserService,
     ) {
-        $this->telegramService = $telegramService;
-        $this->songUploadService = $songUploadService;
+        $this->telegramService         = $telegramService;
+        $this->songUploadService       = $songUploadService;
         $this->showDownloadOptionsAction = $showDownloadOptionsAction;
-        $this->messageProcessor = $messageProcessor;
-        $this->membershipService = $membershipService;
-        $this->requestSongAction = $requestSongAction;
+        $this->messageProcessor        = $messageProcessor;
+        $this->membershipService       = $membershipService;
+        $this->requestSongAction       = $requestSongAction;
+        $this->notifier                = $notifier;
+        $this->botUserService          = $botUserService;
     }
 
     public function index(Request $request)
     {
-        if ($request->has('callback_query')) {
-            $this->handleCallback($request);
-            return response()->json(['status' => 'ok']);
-        }
+        try {
+            if ($request->has('callback_query')) {
+                $this->handleCallback($request);
+                return response()->json(['status' => 'ok']);
+            }
 
-        if ($request->has('message')) {
-            $this->handleMessage($request);
+            if ($request->has('message')) {
+                $this->handleMessage($request);
+            }
+        } catch (\Throwable $e) {
+            // ── ثبت خطای کلی وبهوک ──
+            $this->notifier->error('وبهوک تلگرام', $e->getMessage(), 'telegram');
+            Log::error('Telegram webhook error', ['error' => $e->getMessage()]);
         }
 
         return response()->json(['status' => 'ok']);
@@ -61,6 +75,14 @@ class TelBotController extends Controller
         $userId   = $message['from']['id'];
         $userName = $message['from']['first_name'] ?? 'دوست عزیز';
         $chatId   = $message['chat']['id'];
+
+        // ✅ ثبت/به‌روزرسانی کاربر + نوتیفیکیشن «پیام دریافت شد»
+        try {
+            $this->botUserService->registerFromMessage($message, 'telegram');
+            $this->notifier->messageReceived($message, 'telegram');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to register/notify user', ['error' => $e->getMessage()]);
+        }
 
         // کانال‌هایی که هنوز عضو نیست رو بگیر
         $missing = $this->membershipService->getMissingChannels($userId);
