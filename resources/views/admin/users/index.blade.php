@@ -4,40 +4,60 @@
 @section('page_title', 'مدیریت کاربران')
 
 @section('header_actions')
-    <span class="text-sm text-gray-500">کل: {{ $users->total() }} کاربر</span>
+    <span class="hidden sm:inline-flex items-center px-3 py-1.5 bg-gray-100 text-gray-600 text-xs font-medium rounded-lg">
+        کل: {{ number_format($users->total()) }} کاربر
+    </span>
 @endsection
 
 @section('content')
-    <!-- فیلتر و جستجو -->
+
+    {{-- ═══════════════════════════════════════════════════ --}}
+    {{-- فیلتر و جستجو --}}
+    {{-- ═══════════════════════════════════════════════════ --}}
     <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 mb-6">
         <form method="GET" action="{{ route('admin.users.index') }}" class="flex flex-wrap gap-4 items-end">
+
+            {{-- جستجو --}}
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-gray-500 mb-1">جستجو</label>
-                <input type="text" name="search" value="{{ request('search') }}" placeholder="نام کاربری، ایمیل، نام..."
-                    class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                <div class="relative">
+                    <input type="text" name="search" value="{{ request('search') }}" placeholder="نام کاربری، ایمیل، نام..."
+                        class="w-full pr-10 pl-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition">
+                    <svg class="absolute right-3 top-3 w-4 h-4 text-gray-400" fill="none" stroke="currentColor"
+                        viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
             </div>
+
+            {{-- نقش --}}
             <div class="w-40">
                 <label class="block text-xs text-gray-500 mb-1">نقش</label>
                 <select name="role"
-                    class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white">
+                    class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white transition">
                     <option value="">همه</option>
-                    <option value="admin" {{ request('role') === 'admin' ? 'selected' : '' }}>ادمین</option>
-                    <option value="user" {{ request('role') === 'user' ? 'selected' : '' }}>کاربر</option>
+                    <option value="admin" @selected(request('role') === 'admin')>ادمین</option>
+                    <option value="user" @selected(request('role') === 'user')>کاربر</option>
                 </select>
             </div>
+
+            {{-- وضعیت --}}
             <div class="w-40">
                 <label class="block text-xs text-gray-500 mb-1">وضعیت</label>
                 <select name="status"
-                    class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white">
+                    class="w-full px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white transition">
                     <option value="">همه</option>
-                    <option value="1" {{ request('status') === '1' ? 'selected' : '' }}>فعال</option>
-                    <option value="0" {{ request('status') === '0' ? 'selected' : '' }}>غیرفعال</option>
+                    <option value="1" @selected(request('status') === '1')>فعال</option>
+                    <option value="0" @selected(request('status') === '0')>غیرفعال</option>
                 </select>
             </div>
+
             <button type="submit"
                 class="px-5 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 transition-colors">
-                جستجو
+                🔍 جستجو
             </button>
+
             <a href="{{ route('admin.users.index') }}"
                 class="px-5 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition-colors">
                 پاک کردن
@@ -45,7 +65,9 @@
         </form>
     </div>
 
-    <!-- جدول کاربران -->
+    {{-- ═══════════════════════════════════════════════════ --}}
+    {{-- جدول کاربران --}}
+    {{-- ═══════════════════════════════════════════════════ --}}
     <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -73,24 +95,28 @@
                                 </div>
                             </td>
                             <td class="py-3 px-5 text-gray-600">{{ $user->full_name ?? '—' }}</td>
-                            <td class="py-3 px-5 text-gray-600" dir="ltr">{{ $user->email }}</td>
+                            <td class="py-3 px-5 text-gray-600 font-mono text-xs" dir="ltr">{{ $user->email }}</td>
                             <td class="py-3 px-5">
                                 <span
                                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                                {{ $user->role === 'admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800' }}">
+                                            {{ $user->role === 'admin' ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800' }}">
                                     {{ $user->display_role }}
                                 </span>
                             </td>
                             <td class="py-3 px-5">
                                 <span
                                     class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                                                {{ $user->is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}">
+                                            {{ $user->is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}">
                                     {{ $user->is_active ? 'فعال' : 'غیرفعال' }}
                                 </span>
                             </td>
-                            <td class="py-3 px-5 text-gray-500">{{ $user->created_at->format('Y/m/d') }}</td>
+                            <td class="py-3 px-5 text-gray-500 whitespace-nowrap">
+                                {{ jdate($user->created_at)->format('Y/m/d') }}
+                            </td>
                             <td class="py-3 px-5">
                                 <div class="flex items-center justify-center gap-2">
+
+                                    {{-- ویرایش --}}
                                     <a href="{{ route('admin.users.edit', $user) }}" title="ویرایش"
                                         class="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -98,6 +124,8 @@
                                                 d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                         </svg>
                                     </a>
+
+                                    {{-- فعال/غیرفعال --}}
                                     <form method="POST" action="{{ route('admin.users.toggle-active', $user) }}" class="inline">
                                         @csrf
                                         <button type="submit" title="{{ $user->is_active ? 'غیرفعال کردن' : 'فعال کردن' }}"
@@ -121,6 +149,7 @@
                     @empty
                         <tr>
                             <td colspan="7" class="py-12 text-center text-gray-400">
+                                <div class="text-4xl mb-2">👤</div>
                                 هیچ کاربری یافت نشد.
                             </td>
                         </tr>
@@ -129,11 +158,12 @@
             </table>
         </div>
 
-        <!-- صفحه‌بندی -->
+        {{-- صفحه‌بندی --}}
         @if($users->hasPages())
             <div class="px-5 py-4 border-t border-gray-200">
-                {{ $users->withQueryString()->links() }}
+                {{ $users->links() }}
             </div>
         @endif
     </div>
+
 @endsection

@@ -4,13 +4,18 @@
 @section('page_title', 'داشبورد')
 
 @section('content')
-    <!-- آمار کلی -->
+
+    {{-- ═══════════════════════════════════════════════════ --}}
+    {{-- آمار کلی --}}
+    {{-- ═══════════════════════════════════════════════════ --}}
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+
+        {{-- کل کاربران سایت --}}
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-sm text-gray-500">کل کاربران</p>
-                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ \App\Models\User::count() }}</p>
+                    <p class="text-sm text-gray-500">کاربران سایت</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ number_format(\App\Models\User::count()) }}</p>
                 </div>
                 <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -21,11 +26,13 @@
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        {{-- آهنگ‌ها --}}
+        <a href="{{ route('admin.songs.index') }}"
+            class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:border-purple-300 transition">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-gray-500">آهنگ‌ها</p>
-                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ \App\Models\Song::count() }}</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ number_format(\App\Models\Song::count()) }}</p>
                 </div>
                 <div class="w-12 h-12 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -34,13 +41,17 @@
                     </svg>
                 </div>
             </div>
-        </div>
+        </a>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        {{-- درخواست‌های در انتظار --}}
+        <a href="{{ route('admin.song-requests.index', ['status' => 'pending']) }}"
+            class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:border-yellow-300 transition">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-gray-500">درخواست‌های در انتظار</p>
-                    <p class="text-2xl font-bold text-gray-900 mt-1">{{ \App\Models\SongRequest::pending()->count() }}</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">
+                        {{ number_format(\App\Models\SongRequest::pending()->count()) }}
+                    </p>
                 </div>
                 <div class="w-12 h-12 bg-yellow-50 text-yellow-600 rounded-xl flex items-center justify-center">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -49,8 +60,9 @@
                     </svg>
                 </div>
             </div>
-        </div>
+        </a>
 
+        {{-- دانلود کل --}}
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
             <div class="flex items-center justify-between">
                 <div>
@@ -69,8 +81,89 @@
         </div>
     </div>
 
+    {{-- ═══════════════════════════════════════════════════ --}}
+    {{-- آمار اعضای ربات‌ها --}}
+    {{-- ═══════════════════════════════════════════════════ --}}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+
+        {{-- اعضای تلگرام --}}
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500">اعضای ربات تلگرام</p>
+                    <p class="text-2xl font-bold text-sky-600 mt-1">
+                        @if(class_exists(\App\Models\BotUser::class))
+                            {{ number_format(\App\Models\BotUser::telegram()->count()) }}
+                        @else
+                            —
+                        @endif
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-sky-50 text-sky-600 rounded-xl flex items-center justify-center text-2xl">✈️</div>
+            </div>
+        </div>
+
+        {{-- اعضای بله --}}
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500">اعضای ربات بله</p>
+                    <p class="text-2xl font-bold text-indigo-600 mt-1">
+                        @if(class_exists(\App\Models\BotUser::class))
+                            {{ number_format(\App\Models\BotUser::bale()->count()) }}
+                        @else
+                            —
+                        @endif
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-2xl">🤖
+                </div>
+            </div>
+        </div>
+
+        {{-- کاربران بلاک‌شده --}}
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500">کاربران بلاک‌شده</p>
+                    <p class="text-2xl font-bold text-red-600 mt-1">
+                        @if(class_exists(\App\Models\BotUser::class))
+                            {{ number_format(\App\Models\BotUser::blocked()->count()) }}
+                        @else
+                            —
+                        @endif
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-red-50 text-red-600 rounded-xl flex items-center justify-center text-2xl">🚫</div>
+            </div>
+        </div>
+
+        {{-- خطاهای امروز --}}
+        <a href="{{ route('admin.activity-logs.index', ['level' => 'error']) }}"
+            class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:border-orange-300 transition">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500">اعلانات امروز</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">
+                        @if(class_exists(\App\Models\ActivityLog::class))
+                            {{ number_format(\App\Models\ActivityLog::today()->count()) }}
+                        @else
+                            —
+                        @endif
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center text-2xl">🔔
+                </div>
+            </div>
+        </a>
+    </div>
+
+    {{-- ═══════════════════════════════════════════════════ --}}
+    {{-- لیست‌های آخرین فعالیت‌ها --}}
+    {{-- ═══════════════════════════════════════════════════ --}}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- آخرین درخواست‌ها -->
+
+        {{-- آخرین درخواست‌ها --}}
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-semibold text-gray-900">آخرین درخواست‌ها</h2>
@@ -85,17 +178,17 @@
                             <p class="text-xs text-gray-500">{{ $req->full_name }}</p>
                         </div>
                         <span class="text-xs font-medium px-2.5 py-1 rounded-full
-                                            {{ $req->status === 'pending' ? 'bg-yellow-100 text-yellow-800' : '' }}
-                                            {{ $req->status === 'processing' ? 'bg-blue-100 text-blue-800' : '' }}
-                                            {{ $req->status === 'completed' ? 'bg-green-100 text-green-800' : '' }}
-                                            {{ $req->status === 'rejected' ? 'bg-red-100 text-red-800' : '' }}
-                                        ">{{ $req->status_label }}</span>
+                                                                    {{ $req->status === 'pending' ? 'bg-yellow-100 text-yellow-800' : '' }}
+                                                                    {{ $req->status === 'processing' ? 'bg-blue-100 text-blue-800' : '' }}
+                                                                    {{ $req->status === 'completed' ? 'bg-green-100 text-green-800' : '' }}
+                                                                    {{ $req->status === 'rejected' ? 'bg-red-100 text-red-800' : '' }}
+                                                                ">{{ $req->status_label }}</span>
                     </div>
                 @endforeach
             </div>
         </div>
 
-        <!-- آخرین آهنگ‌ها -->
+        {{-- آخرین آهنگ‌ها --}}
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
             <div class="flex items-center justify-between mb-4">
                 <h2 class="text-lg font-semibold text-gray-900">آخرین آهنگ‌ها</h2>
@@ -109,10 +202,12 @@
                             <p class="text-sm font-medium text-gray-900 truncate">{{ $song->title }}</p>
                             <p class="text-xs text-gray-500">{{ $song->artist_name }}</p>
                         </div>
-                        <span class="text-xs text-gray-500">{{ number_format($song->downloads_count) }} دانلود</span>
+                        <span class="text-xs text-gray-500 whitespace-nowrap">{{ number_format($song->downloads_count) }}
+                            دانلود</span>
                     </div>
                 @endforeach
             </div>
         </div>
     </div>
+
 @endsection

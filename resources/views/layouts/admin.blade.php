@@ -7,8 +7,8 @@
     <title>@yield('title', 'پنل مدیریت')</title>
 
     {{-- ═══════════════════════════════════════════════════ --}}
-    {{-- Vite: فایل‌های CSS و JS (به‌جای CDN) --}}
-    {{-- پس از npm run build، فایل‌ها از public/build بارگذاری می‌شوند --}}
+    {{--  Vite: فایل‌های CSS و JS (به‌جای CDN)               --}}
+    {{--  پس از npm run build، فایل‌ها از public/build بارگذاری می‌شوند --}}
     {{-- ═══════════════════════════════════════════════════ --}}
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
@@ -20,15 +20,13 @@
     <div class="flex min-h-screen">
 
         {{-- ═══════════════════════════════════════════════════ --}}
-        {{-- سایدبار (Sidebar) --}}
+        {{-- سایدبار (Sidebar)                                    --}}
         {{-- ═══════════════════════════════════════════════════ --}}
-        <aside
-            class="fixed inset-y-0 right-0 z-40 w-64 bg-white border-l border-gray-200 flex flex-col transition-transform lg:translate-x-0 {{ request()->cookie('sidebar') === 'closed' ? 'translate-x-full lg:translate-x-full' : 'translate-x-0' }}">
+        <aside class="fixed inset-y-0 right-0 z-40 w-64 bg-white border-l border-gray-200 flex flex-col transition-transform lg:translate-x-0 {{ request()->cookie('sidebar') === 'closed' ? 'translate-x-full lg:translate-x-full' : 'translate-x-0' }}">
 
             {{-- لوگو --}}
             <div class="h-16 flex items-center gap-2 px-6 border-b border-gray-100">
-                <div
-                    class="w-9 h-9 bg-indigo-600 text-white rounded-xl flex items-center justify-center text-lg font-bold">
+                <div class="w-9 h-9 bg-indigo-600 text-white rounded-xl flex items-center justify-center text-lg font-bold">
                     🎵
                 </div>
                 <span class="font-bold text-gray-900">پنل مدیریت</span>
@@ -77,24 +75,25 @@
         </aside>
 
         {{-- ═══════════════════════════════════════════════════ --}}
-        {{-- محتوای اصلی --}}
+        {{-- محتوای اصلی                                          --}}
         {{-- ═══════════════════════════════════════════════════ --}}
         <div class="flex-1 lg:mr-64">
 
             {{-- هدر بالای صفحه --}}
-            <header
-                class="sticky top-0 z-30 h-16 bg-white/80 backdrop-blur border-b border-gray-200 flex items-center justify-between px-6">
+            <header class="sticky top-0 z-30 h-16 bg-white/80 backdrop-blur border-b border-gray-200 flex items-center justify-between px-6">
                 <h1 class="text-lg font-bold text-gray-900">
                     @yield('page_title', 'پنل مدیریت')
                 </h1>
 
                 <div class="flex items-center gap-3">
+                    {{-- اکشن‌های هدر (دکمه‌های اختیاری هر صفحه) --}}
+                    @yield('header_actions')
+
                     {{-- دکمه منو در موبایل --}}
                     <button onclick="document.querySelector('aside').classList.toggle('translate-x-full')"
                         class="lg:hidden p-2 text-gray-500 hover:text-gray-900">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M4 6h16M4 12h16M4 18h16" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
                         </svg>
                     </button>
                 </div>
