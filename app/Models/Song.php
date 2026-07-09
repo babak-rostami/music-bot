@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Babak\Elasticsearch\Traits\ElasticsearchableTrait;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Song extends Model
 {
@@ -69,5 +70,10 @@ class Song extends Model
                 ->orWhere('artist_name', 'LIKE', "%{$term}%")
                 ->orWhere('source_url', 'LIKE', "%{$term}%");
         });
+    }
+
+    public function artists(): BelongsToMany
+    {
+        return $this->belongsToMany(Artist::class);
     }
 }

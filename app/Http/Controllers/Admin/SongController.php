@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Helpers\SongSlugHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Song;
+use App\Services\ArtistResolver;
 use Babak\Elasticsearch\Facades\Elasticsearch;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -65,6 +66,7 @@ class SongController extends Controller
         $song = Song::create($validated);
 
         Elasticsearch::sync($song);
+        ArtistResolver::attachSingleArtist($song);
 
         return redirect()->route('admin.songs.index')->with('success', 'آهنگ با موفقیت ایجاد شد.');
     }

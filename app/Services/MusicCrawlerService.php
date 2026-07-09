@@ -94,6 +94,7 @@ class MusicCrawlerService
 
         if ($song->wasRecentlyCreated) {
             Elasticsearch::sync($song);
+            ArtistResolver::attachSingleArtist($song);
         }
 
         return true;
@@ -112,6 +113,10 @@ class MusicCrawlerService
             $title = $crawler
                 ->filter('h1.title a')
                 ->text();
+
+            if (str_starts_with(trim($title), 'دانلود آهنگ بی کلام')) {
+                return null;
+            }
 
             preg_match(
                 '/دانلود آهنگ (.*?) به نام (.*)/u',

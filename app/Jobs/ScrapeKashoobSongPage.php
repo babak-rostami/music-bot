@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Helpers\SongSlugHelper;
 use App\Models\Song;
+use App\Services\ArtistResolver;
 use Babak\Elasticsearch\Facades\Elasticsearch;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -67,13 +68,12 @@ class ScrapeKashoobSongPage implements ShouldQueue
             // ---- 2. Artist Name ----
             $artistName = '';
             try {
-                $artistName = trim($crawler->filter('h2 a')->text());
+                $artistName = trim($crawler->filter('.subtitle')->attr('data-person'));
             } catch (\Exception $e) {
-                try {
-                    $artistName = trim($crawler->filter('h2')->text());
-                } catch (\Exception $e2) {
-                    Log::warning("No artist found in: {$this->sourceUrl}");
-                }
+                Log::warning("No artist found in: {$this->sourceUrl}");
+            }
+            if (!$artistName) {
+                return;
             }
 
             // ---- 3. Slug ----
@@ -132,6 +132,7 @@ class ScrapeKashoobSongPage implements ShouldQueue
             ]);
 
             Elasticsearch::sync($song);
+            ArtistResolver::attachSingleArtist($song);
 
             Log::info("Saved song: {$cleanTitle} - {$artistName}");
         } catch (\Exception $e) {
