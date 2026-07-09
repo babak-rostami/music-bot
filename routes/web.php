@@ -20,11 +20,6 @@ use Symfony\Component\DomCrawler\Crawler;
 
 Route::get('/', function () {
     dd('done');
-    // $songs = Song::where('slug', null)->get();
-    // foreach ($songs as $song) {
-    //     $song->slug = SongSlugHelper::make($song->title);
-    //     $song->update();
-    // }
     return view('welcome');
 });
 
@@ -46,7 +41,7 @@ Route::prefix('admin_page')->name('admin.')->group(function () {
         Route::post('users/{user}/change-password', [UserController::class, 'changePassword'])->name('users.change-password');
 
         // مدیریت آهنگ‌ها
-        Route::resource('songs', SongController::class)->except(['destroy']);
+        Route::resource('songs', SongController::class);
 
         // مدیریت درخواست‌های آپلود
         Route::resource('song-requests', SongRequestController::class)->except(['create', 'store', 'edit']);

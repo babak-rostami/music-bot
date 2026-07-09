@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Helpers\SongSlugHelper;
 use App\Models\Song;
+use Babak\Elasticsearch\Facades\Elasticsearch;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -120,7 +121,7 @@ class ScrapeKashoobSongPage implements ShouldQueue
             $lyrics = $this->extractLyrics($crawler);
 
             // ---- 6. Save ----
-            Song::create([
+            $song = Song::create([
                 'title'            => $cleanTitle,
                 'slug'             => $slug,
                 'artist_name'      => $artistName,
@@ -129,6 +130,8 @@ class ScrapeKashoobSongPage implements ShouldQueue
                 'download_link_128' => $downloadLink128,
                 'download_link_320' => $downloadLink320,
             ]);
+
+            Elasticsearch::sync($song);
 
             Log::info("Saved song: {$cleanTitle} - {$artistName}");
         } catch (\Exception $e) {

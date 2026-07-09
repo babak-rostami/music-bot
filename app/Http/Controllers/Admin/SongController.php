@@ -102,4 +102,14 @@ class SongController extends Controller
 
         return redirect()->route('admin.songs.index')->with('success', 'آهنگ با موفقیت بروزرسانی شد.');
     }
+
+    public function destroy(Song $song)
+    {
+        $song->delete();
+        Elasticsearch::delete($song);
+
+        return redirect()
+            ->route('admin.songs.index')
+            ->with('success', 'آهنگ با موفقیت حذف شد.');
+    }
 }
