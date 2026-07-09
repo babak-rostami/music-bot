@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Helpers\SongSlugHelper;
 use App\Models\Song;
 use App\Services\ArtistResolver;
+use App\Services\MusicService;
 use Babak\Elasticsearch\Facades\Elasticsearch;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -26,7 +27,7 @@ class ScrapeKashoobSongPage implements ShouldQueue
         public string $sourceUrl
     ) {}
 
-    public function handle(): void
+    public function handle(MusicService $musicService): void
     {
         // جلوگیری از ذخیره تکراری
         if (Song::where('source_url', $this->sourceUrl)->exists()) {
@@ -73,6 +74,11 @@ class ScrapeKashoobSongPage implements ShouldQueue
                 Log::warning("No artist found in: {$this->sourceUrl}");
             }
             if (!$artistName) {
+                return;
+            }
+
+            //اگه یه آهنگ بااین اسم و نام خواننده قبلا بود ایجاد نشه دیگه
+            if ($musicService->songExist($cleanTitle, $artistName, $this->sourceUrl)) {
                 return;
             }
 

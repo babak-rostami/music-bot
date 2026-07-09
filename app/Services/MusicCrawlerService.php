@@ -12,6 +12,13 @@ use Symfony\Component\DomCrawler\Crawler;
 
 class MusicCrawlerService
 {
+    private MusicService $musicService;
+    public function __construct(
+        MusicService $musicService,
+    ) {
+        $this->musicService = $musicService;
+    }
+
     public function startAll()
     {
         for ($i = 1; $i <= 1815; $i++) {
@@ -58,6 +65,10 @@ class MusicCrawlerService
             return true;
         }
 
+        if ($this->musicService->songExist($music['musicName'], $music['singer'], $music['musicUrl'])) {
+            return true;
+        }
+
         Song::firstOrCreate(
             ['source_url' => $music['musicUrl']],
             [
@@ -80,6 +91,11 @@ class MusicCrawlerService
         if (!$music || !$music['musicName']) {
             return;
         }
+
+        if ($this->musicService->songExist($music['musicName'], $music['singer'], $music['musicUrl'])) {
+            return;
+        }
+
         $song = Song::firstOrCreate(
             ['source_url' => $music['musicUrl']],
             [
