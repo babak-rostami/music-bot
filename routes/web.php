@@ -17,7 +17,9 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 use Symfony\Component\DomCrawler\Crawler;
 
+
 Route::get('/', function () {
+    dd('done');
     // $songs = Song::where('slug', null)->get();
     // foreach ($songs as $song) {
     //     $song->slug = SongSlugHelper::make($song->title);

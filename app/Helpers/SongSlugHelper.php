@@ -22,53 +22,15 @@ class SongSlugHelper
         $title = str_replace("\u{200C}", ' ', $title);
 
         // 3) حذف کاراکترهای غیرمجاز
-        //    فقط حروف، اعداد، فاصله و خط تیره نگه داشته می‌شود.
-        //    نکته مهم: این کار باید قبل از حذف حروف اضافه انجام شود تا علائم نگارشی
-        //    چسبیده به کلمات (مثل «و،» یا «(در») جلوی تشخیص درست حروف ربط را نگیرند.
+        // فقط حروف، اعداد، فاصله و خط تیره نگه داشته می‌شود.
         $title = preg_replace('/[^\p{L}\p{N}\s-]/u', '', $title);
 
-        // 4) حذف حروف ربط / کلمات اضافه
-        $stopWords = [
-            'و',
-            'در',
-            'از',
-            'به',
-            'با',
-            'برای',
-            'بر',
-            'تا',
-            'یا',
-            'که',
-            'این',
-            'آن',
-            'یک',
-            'روی',
-            'زیر',
-            'اگر',
-            'اما',
-            'هم',
-            'همه',
-            'هر',
-            'بعد',
-            'قبل',
-            'بدون',
-            'مثل',
-            'مانند',
-            'بین',
-            'داخل',
-            'خارج',
-            'توی',
-            'تو',
-        ];
+        // 4) حذف فاصله‌های اضافی
+        $title = trim($title);
+        $title = preg_replace('/\s+/u', ' ', $title);
 
-        $words = preg_split('/\s+/u', trim($title)) ?: [];
-
-        $words = array_filter($words, function ($word) use ($stopWords) {
-            return $word !== '' && ! in_array($word, $stopWords, true);
-        });
-
-        // 5) اتصال کلمات با خط تیره
-        $title = implode('-', $words);
+        // 5) تبدیل فاصله‌ها به خط تیره
+        $title = str_replace(' ', '-', $title);
 
         // 6) حذف خط تیره‌های پشت‌سرهم و خط تیره‌های ابتدا و انتها
         $title = preg_replace('/-+/', '-', $title);
@@ -84,19 +46,6 @@ class SongSlugHelper
 
     /**
      * ساخت اسلاگ یکتا.
-     *
-     * اگر اسلاگ از قبل داخل جدول songs وجود داشت، به ترتیب
-     * «-1»، «-2»، «-3» ... به انتهای اسلاگ اضافه می‌کند تا به یک اسلاگ آزاد برسد.
-     *
-     * مثال:
-     *   ali         → موجود است → ali-1
-     *   ali-1       → موجود است → ali-2
-     *   ali-2       → موجود است → ali-3   ← اگر ali-2 بود، ali-3 می‌سازد
-     *
-     * @param  string   $title     عنوان آهنگ
-     * @param  int|null $ignoreId  آیدی رکوردی که هنگام ویرایش نباید در نظر گرفته شود
-     *                             (تا رکورد با خودش تداخل پیدا نکند)
-     * @return string
      */
     public static function make(string $title, ?int $ignoreId = null): string
     {
@@ -107,8 +56,9 @@ class SongSlugHelper
             return $baseSlug;
         }
 
-        // در غیر این صورت -1 ، -2 ، -3 ... امتحان می‌کنیم تا به یک اسلاگ آزاد برسیم
+        // در غیر این صورت -1 ، -2 ، -3 ... امتحان می‌کنیم
         $counter = 1;
+
         do {
             $slug = $baseSlug . '-' . $counter;
             $counter++;
@@ -118,7 +68,7 @@ class SongSlugHelper
     }
 
     /**
-     * بررسی اینکه آیا اسلاگِ داده‌شده قبلاً در جدول songs ثبت شده یا خیر.
+     * بررسی وجود اسلاگ در جدول songs
      */
     protected static function slugExists(string $slug, ?int $ignoreId = null): bool
     {
