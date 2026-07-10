@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\LoginController;
 use App\Http\Controllers\Admin\SongController;
 use App\Http\Controllers\Admin\SongRequestController;
+use App\Http\Controllers\Admin\SongSearchQueryController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Middleware\AdminMiddleware;
 use App\Models\Song;
@@ -53,5 +54,10 @@ Route::prefix('admin_page')->name('admin.')->group(function () {
         Route::delete('activity-logs/{activityLog}', [ActivityLogController::class, 'destroy'])->name('activity-logs.destroy');
         Route::post('activity-logs/clear', [ActivityLogController::class, 'clear'])->name('activity-logs.clear');
         Route::get('activity-logs/stats/json', [ActivityLogController::class, 'stats'])->name('activity-logs.stats');
+
+        Route::get('song-search-queries', [SongSearchQueryController::class, 'index'])->name('song-search-queries.index');
+        Route::delete('song-search-queries/bulk', [SongSearchQueryController::class, 'bulkDestroy'])->name('song-search-queries.bulk-destroy');
+        Route::delete('song-search-queries/low-count', [SongSearchQueryController::class, 'destroyLowCount'])->name('song-search-queries.destroy-low-count');
+        Route::delete('song-search-queries/{songSearchQuery}', [SongSearchQueryController::class, 'destroy'])->name('song-search-queries.destroy');
     });
 });

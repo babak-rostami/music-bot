@@ -168,7 +168,7 @@
                                             {{ $req->admin_note ?? '—' }}
                                         </td>
                                         <td class="py-3 px-5 text-gray-500 whitespace-nowrap">
-                                            {{ jdate($req->created_at)->format('Y/m/d H:i') }}
+                                            {{ jdate($req->created_at)->ago() }}
                                         </td>
                                         <td class="py-3 px-5">
                                             <div class="flex items-center justify-center gap-1">

@@ -22,8 +22,8 @@ class MusicService
             ->where('artist_name', $artist_name)->exists();
 
         if ($isSongExist) {
-            $message = 'آهنگ قبلا ثبت شده: ' . $title . ' از ' . $artist_name . ' آدرس صفحه: ' . $sourceUrl;
-            $this->notifier->error('ایجاد آهنگ جدید', $message);
+            // $message = 'آهنگ قبلا ثبت شده: ' . $title . ' از ' . $artist_name . ' آدرس صفحه: ' . $sourceUrl;
+            // $this->notifier->error('ایجاد آهنگ جدید', $message);
             return true;
         }
 

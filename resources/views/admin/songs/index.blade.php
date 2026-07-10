@@ -105,7 +105,7 @@
                             </td>
 
                             <td class="py-3 px-5 text-gray-500 whitespace-nowrap">
-                                {{ jdate($song->created_at)->format('Y/m/d') }}
+                                {{ jdate($song->created_at)->ago() }}
                             </td>
 
                             <td class="py-3 px-5">

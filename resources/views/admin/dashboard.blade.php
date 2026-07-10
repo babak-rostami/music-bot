@@ -8,7 +8,7 @@
     {{-- ═══════════════════════════════════════════════════ --}}
     {{-- آمار کلی --}}
     {{-- ═══════════════════════════════════════════════════ --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
 
         {{-- کل کاربران سایت --}}
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
@@ -79,12 +79,10 @@
                 </div>
             </div>
         </div>
-    </div>
 
-    {{-- ═══════════════════════════════════════════════════ --}}
-    {{-- آمار اعضای ربات‌ها --}}
-    {{-- ═══════════════════════════════════════════════════ --}}
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {{-- ═══════════════════════════════════════════════════ --}}
+        {{-- آمار اعضای ربات‌ها --}}
+        {{-- ═══════════════════════════════════════════════════ --}}
 
         {{-- اعضای تلگرام --}}
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
@@ -156,6 +154,25 @@
                 </div>
             </div>
         </a>
+
+        {{-- جستجوهای کاربران --}}
+        <a href="{{ route('admin.song-search-queries.index') }}"
+            class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:border-orange-300 transition">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500">جستجوهای کاربران</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">
+                        @if(class_exists(\App\Models\SongSearchQuery::class))
+                            {{ number_format(\App\Models\SongSearchQuery::today()->count()) }}
+                        @else
+                            —
+                        @endif
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center text-2xl">🔎
+                </div>
+            </div>
+        </a>
     </div>
 
     {{-- ═══════════════════════════════════════════════════ --}}
@@ -177,12 +194,13 @@
                             <p class="text-sm font-medium text-gray-900 truncate">{{ $req->query }}</p>
                             <p class="text-xs text-gray-500">{{ $req->full_name }}</p>
                         </div>
-                        <span class="text-xs font-medium px-2.5 py-1 rounded-full
-                                                                    {{ $req->status === 'pending' ? 'bg-yellow-100 text-yellow-800' : '' }}
-                                                                    {{ $req->status === 'processing' ? 'bg-blue-100 text-blue-800' : '' }}
-                                                                    {{ $req->status === 'completed' ? 'bg-green-100 text-green-800' : '' }}
-                                                                    {{ $req->status === 'rejected' ? 'bg-red-100 text-red-800' : '' }}
-                                                                ">{{ $req->status_label }}</span>
+                        <span
+                            class="text-xs font-medium px-2.5 py-1 rounded-full
+                                                                                                                    {{ $req->status === 'pending' ? 'bg-yellow-100 text-yellow-800' : '' }}
+                                                                                                                    {{ $req->status === 'processing' ? 'bg-blue-100 text-blue-800' : '' }}
+                                                                                                                    {{ $req->status === 'completed' ? 'bg-green-100 text-green-800' : '' }}
+                                                                                                                    {{ $req->status === 'rejected' ? 'bg-red-100 text-red-800' : '' }}
+                                                                                                                ">{{ $req->status_label }}</span>
                     </div>
                 @endforeach
             </div>

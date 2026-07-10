@@ -240,7 +240,7 @@
                                 @if ($log->chat_id)
                                     <span>💬 {{ $log->chat_id }}</span>
                                 @endif
-                                <span>🕐 {{ jdate($log->created_at)->format('Y/m/d H:i') }}</span>
+                                <span>🕐 {{ jdate($log->created_at)->ago() }}</span>
                             </div>
                         </div>
 

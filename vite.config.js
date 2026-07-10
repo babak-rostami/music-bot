@@ -9,11 +9,6 @@ export default defineConfig({
             // ورودی‌های اصلی: CSS و JS جدا
             input: ["resources/css/app.css", "resources/js/app.js"],
             refresh: true,
-            fonts: [
-                // فونت فارسی Vazirmatn به‌صورت خود-میزبان (Self-hosted)
-                // → نیازی به CDN ندارید، فایل فونت در build نهایی قرار می‌گیرد
-                bunny("Vazirmatn", { weights: [400, 500, 600, 700] }),
-            ],
         }),
         tailwindcss(),
     ],
