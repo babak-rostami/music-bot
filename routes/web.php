@@ -1,6 +1,5 @@
 <?php
 
-use App\Helpers\SongSlugHelper;
 use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\LoginController;
@@ -9,17 +8,11 @@ use App\Http\Controllers\Admin\SongRequestController;
 use App\Http\Controllers\Admin\SongSearchQueryController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Middleware\AdminMiddleware;
-use App\Models\Song;
-use App\Models\SongRequest;
-use Babak\Elasticsearch\Facades\Elasticsearch;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
-use Symfony\Component\DomCrawler\Crawler;
 
 
 Route::get('/', function () {
+    // Elasticsearch::deleteIndex('songs');
     dd('done');
     return view('welcome');
 });

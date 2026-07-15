@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\Roz;
 
-use App\Jobs\CrawlLastMusicJob;
+use App\Jobs\Crawlers\Roz\CrawlLastMusicJob;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;

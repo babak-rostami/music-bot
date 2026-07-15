@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Jobs;
+namespace App\Jobs\Crawlers\Roz;
 
-use App\Services\MusicCrawlerService;
+use App\Services\Crawlers\Roz\MusicCrawlerService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 

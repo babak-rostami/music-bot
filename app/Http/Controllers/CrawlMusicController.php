@@ -2,9 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\CrawlLastMusicJob;
-use App\Jobs\CrawlMusicJob;
-use App\Services\MusicCrawlerService;
+use App\Jobs\Crawlers\Roz\CrawlLastMusicJob;
+use App\Services\Crawlers\Roz\MusicCrawlerService;
 use Illuminate\Support\Facades\Request;
 
 class CrawlMusicController extends Controller

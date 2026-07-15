@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Jobs;
+namespace App\Jobs\Crawlers\Kashoob;
 
 use App\Helpers\SongSlugHelper;
 use App\Models\Song;
@@ -29,6 +29,7 @@ class ScrapeKashoobSongPage implements ShouldQueue
 
     public function handle(MusicService $musicService): void
     {
+        sleep(10);
         // جلوگیری از ذخیره تکراری
         if (Song::where('source_url', $this->sourceUrl)->exists()) {
             Log::info("Song already exists, skipping: {$this->sourceUrl}");

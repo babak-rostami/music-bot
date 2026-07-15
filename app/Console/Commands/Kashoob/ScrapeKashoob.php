@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\Bia2Music;
 
-use App\Jobs\ScrapeKashoobListPage;
+use App\Jobs\Crawlers\Kashoob\ScrapeKashoobListPage;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;

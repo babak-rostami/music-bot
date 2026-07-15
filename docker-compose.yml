@@ -10,12 +10,22 @@ x-queue-worker: &queue-worker
 x-download-worker: &download-worker
   <<: *queue-worker
   command: >
-    php artisan queue:work --queue=download-music --tries=3 --timeout=300 --sleep=3 --max-jobs=100 --max-time=3600
+    php artisan queue:work --queue=download-music --tries=3 --timeout=300 --max-jobs=100 --max-time=3600
 
 x-crawl-worker: &crawl-worker
   <<: *queue-worker
   command: >
-    php artisan queue:work --queue=crawl-musics-page --tries=3 --timeout=600 --sleep=1 --max-jobs=500 --max-time=3600
+    php artisan queue:work --queue=crawl-musics-page --tries=3 --timeout=600 --max-jobs=100 --max-time=3600
+
+x-crawl-bia2music-worker: &crawl-bia2music-worker
+  <<: *queue-worker
+  command: >
+    php artisan queue:work --queue=bia2music-crawler --tries=0 --timeout=600 --max-jobs=100 --max-time=3600
+
+x-general-worker: &general-worker
+  <<: *queue-worker
+  command: >
+    php artisan queue:work --queue=default --tries=3 --timeout=120 --max-jobs=100 --max-time=3600
 
 services:
   app:
@@ -41,6 +51,14 @@ services:
   queue-crawl:
     <<: *crawl-worker
     container_name: musicbot-queue-crawl
+
+  queue-bia2music-crawl:
+    <<: *crawl-bia2music-worker
+    container_name: musicbot-queue-bia2music-crawl
+  
+  queue-general:
+    <<: *general-worker
+    container_name: musicbot-queue-general
 
   scheduler:
     image: musicbot-app

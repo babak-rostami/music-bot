@@ -16,28 +16,32 @@ class ArtistResolver
     {
         $rawName = trim(preg_replace('/\s+/u', ' ', $song->artist_name ?? ''));
 
-        if ($rawName === '') {
-            return null;
-        }
-
-        // اگر " و " داشت یعنی چند خواننده است، بیخیال
-        if (mb_strpos($rawName, ' و ') !== false) {
+        if ($rawName === '' || mb_strpos($rawName, ' و ') !== false) {
             return null;
         }
 
         $name = $rawName;
         $slug = self::fa_slug($name);
 
-        $artist = Artist::firstOrCreate(
-            ['name' => $name],
-            ['slug' => $slug, 'bio' => null]
-        );
+        // ابتدا چک کن ببین آیا هنرمندی با این نام یا این اسلاگ وجود دارد؟
+        $artist = Artist::where('name', $name)
+            ->orWhere('slug', $slug)
+            ->first();
 
-        // syncWithoutDetaching = اگر قبلا وصل بود دوباره وصل نمیکند
+        if (!$artist) {
+            // اگر نبود، حالا بساز
+            $artist = Artist::create([
+                'name' => $name,
+                'slug' => $slug,
+                'bio' => null
+            ]);
+        }
+
         $song->artists()->syncWithoutDetaching([$artist->id]);
 
         return $artist;
     }
+
 
     /**
      * اسلاگ فارسی

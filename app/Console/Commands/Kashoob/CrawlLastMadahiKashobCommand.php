@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Console\Commands;
+namespace App\Console\Commands\Kashoob;
 
-use App\Jobs\ScrapeKashoobLastPage;
+use App\Jobs\Crawlers\Kashoob\ScrapeKashoobLastPage;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;

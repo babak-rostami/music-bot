@@ -1,11 +1,12 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Crawlers\Roz;
 
 use App\Helpers\SongSlugHelper;
-use App\Jobs\CrawlLastMusicJob;
-use App\Jobs\CrawlMusicJob;
+use App\Jobs\Crawlers\Roz\CrawlMusicJob;
 use App\Models\Song;
+use App\Services\ArtistResolver;
+use App\Services\MusicService;
 use Babak\Elasticsearch\Facades\Elasticsearch;
 use Illuminate\Support\Facades\Http;
 use Symfony\Component\DomCrawler\Crawler;

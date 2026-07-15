@@ -5,6 +5,7 @@ namespace App\Models;
 use Babak\Elasticsearch\Traits\ElasticsearchableTrait;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Song extends Model
 {
@@ -22,6 +23,7 @@ class Song extends Model
         'download_link_128',
         'download_link_320',
         'aparat_link',
+        'cover_path'
     ];
 
     protected function casts(): array
@@ -75,5 +77,10 @@ class Song extends Model
     public function artists(): BelongsToMany
     {
         return $this->belongsToMany(Artist::class);
+    }
+
+    public function downloadLinks(): HasMany
+    {
+        return $this->hasMany(SongDownloadLink::class);
     }
 }

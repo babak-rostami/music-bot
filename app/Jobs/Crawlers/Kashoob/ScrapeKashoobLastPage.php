@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Jobs;
+namespace App\Jobs\Crawlers\Kashoob;
 
 use App\Models\Song;
 use Illuminate\Bus\Queueable;
