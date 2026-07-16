@@ -66,7 +66,7 @@ class MusicCrawlerService
             return true;
         }
 
-        if ($this->musicService->songExist($music['musicName'], $music['singer'], $music['musicUrl'])) {
+        if ($this->musicService->songExist($music['musicName'], $music['singer'])) {
             return true;
         }
 
@@ -93,7 +93,7 @@ class MusicCrawlerService
             return;
         }
 
-        if ($this->musicService->songExist($music['musicName'], $music['singer'], $music['musicUrl'])) {
+        if ($this->musicService->songExist($music['musicName'], $music['singer'])) {
             return;
         }
 

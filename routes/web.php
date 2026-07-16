@@ -1,15 +1,16 @@
 <?php
 
 use App\Http\Controllers\Admin\ActivityLogController;
+use App\Http\Controllers\Admin\ArtistController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\LoginController;
 use App\Http\Controllers\Admin\SongController;
 use App\Http\Controllers\Admin\SongRequestController;
 use App\Http\Controllers\Admin\SongSearchQueryController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\BotUserController;
 use App\Http\Middleware\AdminMiddleware;
 use Illuminate\Support\Facades\Route;
-
 
 Route::get('/', function () {
     // Elasticsearch::deleteIndex('songs');
@@ -34,8 +35,22 @@ Route::prefix('admin_page')->name('admin.')->group(function () {
         Route::post('users/{user}/toggle-active', [UserController::class, 'toggleActive'])->name('users.toggle-active');
         Route::post('users/{user}/change-password', [UserController::class, 'changePassword'])->name('users.change-password');
 
+        // مدیریت کاربران ربات
+        Route::prefix('bot-users')->name('bot-users.')->controller(BotUserController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/export', 'export')->name('export');
+            Route::get('/{botUser}', 'show')->name('show');
+            Route::post('/{botUser}/toggle-block', 'toggleBlock')->name('toggle-block');
+            Route::post('/{botUser}/reset-failed', 'resetFailedCount')->name('reset-failed');
+            // ارسال پیام و آهنگ به کاربر
+            Route::post('/{botUser}/send-message', 'sendMessage')->name('send-message');
+        });
+
         // مدیریت آهنگ‌ها
         Route::resource('songs', SongController::class);
+
+        // مسیرهای مدیریت خوانندگان (Artists)
+        Route::resource('artists', ArtistController::class);
 
         // مدیریت درخواست‌های آپلود
         Route::resource('song-requests', SongRequestController::class)->except(['create', 'store', 'edit']);

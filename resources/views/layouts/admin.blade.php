@@ -51,6 +51,12 @@
                     <span>🎵</span> آهنگ‌ها
                 </a>
 
+                <a href="{{ route('admin.artists.index') }}"
+                    class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
+                        {{ request()->routeIs('admin.artists.*') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                    <span>🗣</span> خواننده ها
+                </a>
+
                 <a href="{{ route('admin.song-requests.index') }}"
                     class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
                         {{ request()->routeIs('admin.song-requests.*') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
@@ -67,6 +73,12 @@
                     class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
                         {{ request()->routeIs('admin.song-search-queries.index') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                     <span>🔎</span> جستجوهای کاربران
+                </a>
+
+                <a href="{{ route('admin.bot-users.index') }}"
+                    class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
+                        {{ request()->routeIs('admin.bot-users.index') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                    <span>👤</span> کاربران ربات
                 </a>
             </nav>
 

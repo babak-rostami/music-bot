@@ -4,6 +4,7 @@ namespace App\Jobs\Crawlers\Kashoob;
 
 use App\Helpers\SongSlugHelper;
 use App\Models\Song;
+use App\Models\SongDownloadLink;
 use App\Services\ArtistResolver;
 use App\Services\MusicService;
 use Babak\Elasticsearch\Facades\Elasticsearch;
@@ -29,7 +30,7 @@ class ScrapeKashoobSongPage implements ShouldQueue
 
     public function handle(MusicService $musicService): void
     {
-        sleep(10);
+        sleep(15);
         // جلوگیری از ذخیره تکراری
         if (Song::where('source_url', $this->sourceUrl)->exists()) {
             Log::info("Song already exists, skipping: {$this->sourceUrl}");
@@ -42,12 +43,23 @@ class ScrapeKashoobSongPage implements ShouldQueue
             $html = Http::withoutVerifying()
                 ->withHeaders([
                     'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language' => 'fa-IR,fa;q=0.9,en;q=0.5',
+                    'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Accept-Language' => 'fa-IR,fa;q=0.9,en-US;q=0.8,en;q=0.7',
+                    'Cache-Control' => 'no-cache',
+                    'Pragma' => 'no-cache',
+                    'Upgrade-Insecure-Requests' => '1',
+                    'Sec-Fetch-Dest' => 'document',
+                    'Sec-Fetch-Mode' => 'navigate',
+                    'Sec-Fetch-Site' => 'none',
+                    'Sec-Fetch-User' => '?1',
                 ])
+                ->withOptions([
+                    'allow_redirects' => true,
+                ])
+                ->connectTimeout(20)
                 ->timeout(60)
-                ->get($this->sourceUrl)
-                ->body();
+                ->retry(2, 3000)
+                ->get($this->sourceUrl);
 
             $crawler = new Crawler($html);
 
@@ -79,7 +91,7 @@ class ScrapeKashoobSongPage implements ShouldQueue
             }
 
             //اگه یه آهنگ بااین اسم و نام خواننده قبلا بود ایجاد نشه دیگه
-            if ($musicService->songExist($cleanTitle, $artistName, $this->sourceUrl)) {
+            if ($musicService->songExist($cleanTitle, $artistName)) {
                 return;
             }
 
@@ -127,6 +139,9 @@ class ScrapeKashoobSongPage implements ShouldQueue
             // ---- 5. Lyrics ----
             $lyrics = $this->extractLyrics($crawler);
 
+            // ---- 5. Image ----
+            $coverPath = $this->extractCoverPath($crawler);
+
             // ---- 6. Save ----
             $song = Song::create([
                 'title'            => $cleanTitle,
@@ -134,12 +149,16 @@ class ScrapeKashoobSongPage implements ShouldQueue
                 'artist_name'      => $artistName,
                 'source_url'       => $this->sourceUrl,
                 'lyrics'           => $lyrics,
+                'cover_path'           => $coverPath,
                 'download_link_128' => $downloadLink128,
                 'download_link_320' => $downloadLink320,
             ]);
 
             Elasticsearch::sync($song);
             ArtistResolver::attachSingleArtist($song);
+
+            $this->storeDownloadLink($song, '128', $downloadLink128);
+            $this->storeDownloadLink($song, '320', $downloadLink320);
 
             Log::info("Saved song: {$cleanTitle} - {$artistName}");
         } catch (\Exception $e) {
@@ -148,6 +167,24 @@ class ScrapeKashoobSongPage implements ShouldQueue
             ]);
             $this->release(60);
         }
+    }
+
+    private function storeDownloadLink(Song $song, string $quality, ?string $downloadUrl): void
+    {
+        if (!$downloadUrl) {
+            return;
+        }
+
+        SongDownloadLink::query()->firstOrCreate(
+            [
+                'provider' => 'kashoob.com',
+                'download_url' => $downloadUrl,
+            ],
+            [
+                'song_id' => $song->id,
+                'quality' => $quality,
+            ]
+        );
     }
 
     private function extractLyrics(Crawler $crawler): ?string
@@ -186,5 +223,35 @@ class ScrapeKashoobSongPage implements ShouldQueue
         });
 
         return empty($lyricLines) ? null : implode("\n", $lyricLines);
+    }
+
+    private function extractCoverPath(Crawler $crawler): ?string
+    {
+        $coverImage = $crawler->filter('div.thumbnail-wrapper > a > img');
+
+        if ($coverImage->count() > 0) {
+            $src = $this->cleanText($coverImage->attr('src') ?? '');
+
+            if ($src !== '') {
+                return $src;
+            }
+        }
+
+        return null;
+    }
+
+    private function cleanText(?string $text): string
+    {
+        $text = $text ?? '';
+
+        $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        $text = str_replace(["\xc2\xa0", '&nbsp;'], ' ', $text);
+
+        $text = preg_replace('/[ \t]+/u', ' ', $text);
+
+        $text = preg_replace("/\r\n|\r/u", "\n", $text);
+
+        return trim($text);
     }
 }

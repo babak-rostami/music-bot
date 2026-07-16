@@ -85,39 +85,34 @@
         {{-- ═══════════════════════════════════════════════════ --}}
 
         {{-- اعضای تلگرام --}}
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <a href="{{ route('admin.bot-users.index', ['platform' => 'telegram']) }}"
+            class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:border-orange-300 transition">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-gray-500">اعضای ربات تلگرام</p>
-                    <p class="text-2xl font-bold text-sky-600 mt-1">
-                        @if(class_exists(\App\Models\BotUser::class))
-                            {{ number_format(\App\Models\BotUser::telegram()->count()) }}
-                        @else
-                            —
-                        @endif
+                    <p class="text-2xl font-bold text-gray-900 mt-1">
+                        {{ number_format(\App\Models\BotUser::telegram()->count()) }}
                     </p>
                 </div>
-                <div class="w-12 h-12 bg-sky-50 text-sky-600 rounded-xl flex items-center justify-center text-2xl">✈️</div>
+                <div class="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center text-2xl">✈️
+                </div>
             </div>
-        </div>
+        </a>
 
         {{-- اعضای بله --}}
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <a href="{{ route('admin.bot-users.index', ['platform' => 'bale']) }}"
+            class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:border-orange-300 transition">
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-sm text-gray-500">اعضای ربات بله</p>
-                    <p class="text-2xl font-bold text-indigo-600 mt-1">
-                        @if(class_exists(\App\Models\BotUser::class))
-                            {{ number_format(\App\Models\BotUser::bale()->count()) }}
-                        @else
-                            —
-                        @endif
+                    <p class="text-2xl font-bold text-gray-900 mt-1">
+                        {{ number_format(\App\Models\BotUser::bale()->count()) }}
                     </p>
                 </div>
-                <div class="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center text-2xl">🤖
+                <div class="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center text-2xl">🤖
                 </div>
             </div>
-        </div>
+        </a>
 
         {{-- کاربران بلاک‌شده --}}
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
@@ -196,11 +191,11 @@
                         </div>
                         <span
                             class="text-xs font-medium px-2.5 py-1 rounded-full
-                                                                                                                    {{ $req->status === 'pending' ? 'bg-yellow-100 text-yellow-800' : '' }}
-                                                                                                                    {{ $req->status === 'processing' ? 'bg-blue-100 text-blue-800' : '' }}
-                                                                                                                    {{ $req->status === 'completed' ? 'bg-green-100 text-green-800' : '' }}
-                                                                                                                    {{ $req->status === 'rejected' ? 'bg-red-100 text-red-800' : '' }}
-                                                                                                                ">{{ $req->status_label }}</span>
+                                                                                                                                                                                            {{ $req->status === 'pending' ? 'bg-yellow-100 text-yellow-800' : '' }}
+                                                                                                                                                                                            {{ $req->status === 'processing' ? 'bg-blue-100 text-blue-800' : '' }}
+                                                                                                                                                                                            {{ $req->status === 'completed' ? 'bg-green-100 text-green-800' : '' }}
+                                                                                                                                                                                            {{ $req->status === 'rejected' ? 'bg-red-100 text-red-800' : '' }}
+                                                                                                                                                                                        ">{{ $req->status_label }}</span>
                     </div>
                 @endforeach
             </div>
