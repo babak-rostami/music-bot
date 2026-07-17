@@ -9,14 +9,12 @@ use App\Http\Controllers\Admin\SongRequestController;
 use App\Http\Controllers\Admin\SongSearchQueryController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\BotUserController;
+use App\Http\Controllers\TestController;
 use App\Http\Middleware\AdminMiddleware;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    // Elasticsearch::deleteIndex('songs');
-    dd('done');
-    return view('welcome');
-});
+Route::get('/', [TestController::class, 'index']);
+
 
 // ─── روت‌های ادمین ───────────────────────────────────────────
 Route::prefix('admin_page')->name('admin.')->group(function () {

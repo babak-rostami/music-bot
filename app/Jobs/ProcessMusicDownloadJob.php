@@ -309,18 +309,45 @@ class ProcessMusicDownloadJob implements ShouldQueue
         return $path;
     }
 
-    private function removeMetadata(string $input, string $dir, string $fileName): string
+    private function removeMetadata(string $input, string $dir, string $fileName, ?string $customTitle = null): string
     {
-        $output = storage_path("app/private/{$dir}/{$fileName}");
+        $channel = '@music_jangi';
+        $outputDir = storage_path("app/private/{$dir}");
+        $output = "{$outputDir}/{$fileName}";
 
-        exec(
-            "ffmpeg -i " . escapeshellarg($input)
-                . " -map 0:a -c copy -map_metadata -1 "
-                . escapeshellarg($output)
-                . " -y 2>&1",
-            $lines,
-            $exit
+        // ساخت پوشه مقصد در صورت عدم وجود
+        if (!file_exists($outputDir)) {
+            mkdir($outputDir, 0755, true);
+        }
+
+        // عنوان فایل (در صورت نرفتن عنوان دلخواه، آدرس کانال قرار می‌گیرد)
+        $title = $customTitle ?? $channel;
+        $comment = "Telegram & Bale: {$channel}";
+
+        // لیست متادیتای جدید جهت قرارگیری در بخش‌های مختلف
+        $metadataFlags = [
+            "-metadata title=" . escapeshellarg($title),
+            "-metadata artist=" . escapeshellarg($channel),
+            "-metadata album=" . escapeshellarg($channel),
+            "-metadata album_artist=" . escapeshellarg($channel),
+            "-metadata composer=" . escapeshellarg($channel),
+            "-metadata publisher=" . escapeshellarg($channel),
+            "-metadata copyright=" . escapeshellarg($channel),
+            "-metadata encoded_by=" . escapeshellarg($channel),
+            "-metadata comment=" . escapeshellarg($comment),
+        ];
+
+        $metadataStr = implode(' ', $metadataFlags);
+
+        // اجرا و پاکسازی متادیتای قبلی و اعمال متادیتای جدید
+        $command = sprintf(
+            'ffmpeg -i %s -map 0:a -c copy -map_metadata -1 -map_metadata:s:a -1 %s -id3v2_version 3 %s -y 2>&1',
+            escapeshellarg($input),
+            $metadataStr,
+            escapeshellarg($output)
         );
+
+        exec($command, $lines, $exit);
 
         if ($exit !== 0) {
             throw new \RuntimeException("ffmpeg failed: " . implode("\n", $lines));
