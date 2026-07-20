@@ -1,17 +1,16 @@
 <?php
 
-namespace App\Telegram\Actions;
+namespace App\Bot\Bale\Actions;
 
+use App\Bot\Bale\Services\BaleService;
 use App\Models\Song;
-use App\Services\TelegramService;
 
-class ShowDownloadOptionsAction
+class BaleShowDownloadOptionsAction
 {
-    public function __construct(protected TelegramService $telegramService) {}
+    public function __construct(protected BaleService $baleService) {}
 
     /**
-     * این متد برای زمانی است که کاربر روی دکمه داخل بات کلیک می‌کند.
-     * یعنی callback_data مثل song_123
+     * وقتی کاربر روی دکمه کلیک می‌کند (callback)
      */
     public function execute(
         string $callbackQueryId,
@@ -22,44 +21,42 @@ class ShowDownloadOptionsAction
         $song = Song::find($songId);
 
         if (!$song) {
-            $this->telegramService->answerCallbackQuery($callbackQueryId, '❌ آهنگ پیدا نشد.');
+            $this->baleService->answerCallbackQuery($callbackQueryId, '❌ آهنگ پیدا نشد.');
             return;
         }
 
         $buttons = $this->makeDownloadButtons($song);
         $text = $this->makeDownloadText($song, !empty($buttons));
 
-        $this->telegramService->editMessageText(
+        $this->baleService->editMessageText(
             $chatId,
             $messageId,
             $text,
             $buttons
         );
 
-        $this->telegramService->answerCallbackQuery($callbackQueryId);
+        $this->baleService->answerCallbackQuery($callbackQueryId);
     }
 
     /**
-     * این متد برای زمانی است که کاربر از سایت وارد بات می‌شود.
-     * یعنی پیام /start dl_123 به بات می‌رسد.
+     * وقتی کاربر از سایت وارد بات می‌شود (/start dl_123)
      */
     public function sendToChat(int|string $chatId, int $songId): void
     {
         $song = Song::find($songId);
 
         if (!$song) {
-            $this->telegramService->sendMessage(
+            $this->baleService->sendMessage(
                 $chatId,
                 "❌ متأسفانه این آهنگ پیدا نشد یا حذف شده است."
             );
-
             return;
         }
 
         $buttons = $this->makeDownloadButtons($song);
         $text = $this->makeDownloadText($song, !empty($buttons));
 
-        $this->telegramService->sendMessage(
+        $this->baleService->sendMessage(
             $chatId,
             $text,
             $buttons
@@ -102,8 +99,6 @@ class ShowDownloadOptionsAction
             return [];
         }
 
-        return [
-            $row
-        ];
+        return [$row];
     }
 }

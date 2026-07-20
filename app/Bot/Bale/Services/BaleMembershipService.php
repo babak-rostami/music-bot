@@ -1,17 +1,21 @@
 <?php
 
-namespace App\Services;
+namespace App\Bot\Bale\Services;
 
 use Illuminate\Support\Facades\Log;
 
-class MembershipService
+/**
+ * سرویس بررسی عضویت کاربران در کانال‌های بله
+ * دقیقاً مشابه MembershipService ولی از BaleService استفاده می‌کند
+ */
+class BaleMembershipService
 {
     /**
      * وضعیت‌هایی که یعنی کاربر واقعاً عضو کانال است
      */
     private const MEMBER_STATUSES = ['member', 'administrator', 'creator'];
 
-    public function __construct(protected TelegramService $telegram) {}
+    public function __construct(protected BaleService $bale) {}
 
     /**
      * چک می‌کنه آیا کاربر عضو همه کانال‌های اسپانسر هست یا نه
@@ -28,13 +32,12 @@ class MembershipService
      */
     public function getMissingChannels(int $userId): array
     {
-        $channels = config('telegram.required_channels', []);
+        $channels = config('telegram.bale_required_channels', config('telegram.required_channels', []));
         $missing = [];
 
         foreach ($channels as $channel) {
-            $member = $this->telegram->getChatMember($channel['chat_id'], $userId);
+            $member = $this->bale->getChatMember($channel['chat_id'], $userId);
 
-            // اگه API خطا داد (ربات ادمین نیست، کانال پیدا نشد و...) → فرض می‌کنیم عضو نیست
             if (!$member) {
                 Log::info('User is not member (API error or not found)', [
                     'user_id' => $userId,
@@ -58,13 +61,12 @@ class MembershipService
      * پیام "لطفاً عضو کانال‌ها بشو" رو فقط با کانال‌های عضو نشده می‌فرسته
      *
      * @param int|string $chatId
-     * @param array $missingChannels  لیست کانال‌هایی که کاربر هنوز عضو آنها نیست
-     * @param string $userName        نام کاربر برای شخصی‌سازی
-     * @return int|null               message_id پیام ارسال‌شده، یا null اگه ارسال نشد
+     * @param array $missingChannels
+     * @param string $userName
+     * @return int|null message_id پیام ارسال‌شده
      */
     public function sendJoinMessage(int|string $chatId, array $missingChannels, string $userName = 'دوست عزیز'): ?int
     {
-        // اگه لیست خالیه، پیامی نمی‌فرستیم (کاربر عضو همه کانال‌ها شده)
         if (empty($missingChannels)) {
             return null;
         }
@@ -73,7 +75,6 @@ class MembershipService
             . "برای استفاده از ربات باید عضو کانال‌های اسپانسر بشی.\n"
             . "بعد از عضویت، روی دکمه «✅ بررسی عضویت» بزن.";
 
-        // ساخت دکمه‌ها: هر کانال یک ردیف، دکمه بررسی عضویت در ردیف آخر
         $buttons = [];
 
         foreach ($missingChannels as $channel) {
@@ -83,10 +84,10 @@ class MembershipService
         }
 
         $buttons[] = [
-            ['text' => '✅ بررسی عضویت', 'callback_data' => 'check_membership'],
+            ['text' => '✅ بررسی عضویت', 'callback_data' => 'bale_check_membership'],
         ];
 
-        $response = $this->telegram->sendMessage($chatId, $text, $buttons);
+        $response = $this->bale->sendMessage($chatId, $text, $buttons);
 
         if (!$response->successful()) {
             Log::warning('Failed to send join message', [
@@ -100,11 +101,11 @@ class MembershipService
     }
 
     /**
-     * پیام موفقیت‌آمیز بودن عضویت رو می‌فرسته (وقتی pending message نداریم)
+     * پیام موفقیت‌آمیز بودن عضویت
      */
     public function sendSuccessMessage(int|string $chatId, string $userName = 'دوست عزیز'): void
     {
-        $this->telegram->sendMessage(
+        $this->bale->sendMessage(
             $chatId,
             "✅ {$userName} عزیز، عضویتت تأیید شد! 🎉\n\n"
                 . "حالا می‌تونی از ربات استفاده کنی. لطفاً درخواستت رو بفرست."

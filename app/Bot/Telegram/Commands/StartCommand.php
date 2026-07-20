@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Telegram\Commands;
+namespace App\Bot\Telegram\Commands;
 
-use App\Services\TelegramService;
-use App\Telegram\Actions\ShowDownloadOptionsAction;
-use App\Telegram\Contracts\CommandHandlerInterface;
+use App\Bot\Telegram\Actions\ShowDownloadOptionsAction;
+use App\Bot\Telegram\Contracts\CommandHandlerInterface;
+use App\Bot\Telegram\Services\TelegramService;
 
 class StartCommand implements CommandHandlerInterface
 {

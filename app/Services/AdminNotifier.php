@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Bot\Bale\Services\BaleService;
+use App\Bot\Telegram\Services\TelegramService;
 use App\Models\SongRequest;
 use Illuminate\Support\Facades\Log;
 

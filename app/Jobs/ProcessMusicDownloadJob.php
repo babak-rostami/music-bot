@@ -2,11 +2,12 @@
 
 namespace App\Jobs;
 
+use App\Bot\BotUserService;
+use App\Bot\NotificationService;
+use App\Bot\Telegram\Services\TelegramService;
 use App\Models\ActivityLog;
 use App\Models\Song;
-use App\Services\BotUserService;
-use App\Services\NotificationService;
-use App\Services\TelegramService;
+use App\Services\SongFileService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -29,7 +30,6 @@ class ProcessMusicDownloadJob implements ShouldQueue
 
     public function __construct(
         public readonly int $songId,
-        public readonly string $quality,
         public readonly int|string $chatId,
         public readonly int|null $messageId,
     ) {}
@@ -37,7 +37,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
     public function middleware(): array
     {
         return [
-            (new WithoutOverlapping("song-{$this->songId}-{$this->quality}"))
+            (new WithoutOverlapping("song-{$this->songId}-{$this->chatId}"))
                 ->dontRelease()
                 ->expireAfter(600),
         ];
@@ -52,6 +52,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
         TelegramService $telegram,
         NotificationService $notifier,
         BotUserService $botUserService,
+        SongFileService $songFileService
     ): void {
         $song = Song::find($this->songId);
 
@@ -66,61 +67,69 @@ class ProcessMusicDownloadJob implements ShouldQueue
         // در چت خصوصی: chatId == userId
         $userId = (int) $this->chatId;
 
-        $fileIdColumn = "telegram_file_id_{$this->quality}";
+        // 1 . چک میکنم ببینم قبلا اگه کش شده بود همون رو ارسال کن
+        $cachedData = $songFileService->getCachedFileId($song, 'telegram');
+        if ($cachedData) {
+            $cachedFileId = $cachedData['file_id'];        // مثلاً "BAADBAADrwADBREAAYag"
+            $fileIdColumn = $cachedData['fileIdColumn'];   // مثلاً "telegram_file_id_320"
+            $quality      = $cachedData['quality'];        // "320" یا "128"
 
-        // ─────────────────────────────────────────────────
-        // تلاش ۱: استفاده از file_id کش شده
-        // ─────────────────────────────────────────────────
-        $cachedFileId = $song->{$fileIdColumn};
-
-        if ($cachedFileId) {
             $response = $telegram->sendAudioByFileId(
-                $this->chatId,
+                $userId,
                 $cachedFileId,
                 $song->title,
                 $song->artist_name
             );
 
             if ($response->successful()) {
-                // ✅ کش موفق
                 $song->increment('downloads_count');
-                $this->onSendSuccess($telegram, $notifier, $botUserService, $song, $userId);
+
+                if ($song->lyrics) {
+                    $telegram->sendMessage($userId, "🎤 متن آهنگ:\n\n" . $song->lyrics);
+                }
+
+                $telegram->deleteMessage($userId, $this->messageId);
+
+                // ✅ نوتیفیکیشن ارسال موفق + ریست خطا
+                $notifier->songSent($song, $userId, $quality, 'telegram', $userId);
+                $botUserService->recordSuccessfulSend($userId, 'telegram');
+
                 return;
             }
 
-            // ❌ file_id کش شده کار نکرد → احتمالاً کاربر بلاک کرده یا file_id منقضی شده
-            $this->onSendFailure(
-                $response,
-                $notifier,
-                $botUserService,
-                $song,
-                $userId,
-                'file_id کش‌شده نامعتبر'
-            );
+            // ❌ ارسال ناموفق
+            $error = $response->json('description', 'خطای ناشناخته');
+            $notifier->songSendFailed($song, $userId, $quality, $error, 'telegram', $userId);
+            $botUserService->recordFailedSend($userId, 'telegram');
 
-            // اگر کاربر بلاک کرده → ادامه‌ی تلاش بی‌فایده است
+            // اگر خطا مربوط به file_id نبود (یعنی کاربر بلاک کرده) → ادامه نده
             if (BotUserService::isBlockedError($response)) {
                 return;
             }
 
-            // file_id بی‌اعتبار رو پاک کن و دوباره آپلود کن
+            // file_id نامعتبر → پاک کن و از مسیر job برو
             $song->update([$fileIdColumn => null]);
         }
 
         // ─────────────────────────────────────────────────
-        // تلاش ۲: دانلود + آپلود به کش + ارسال
+        // 2. کش نشده بود پس بهترین لینک دانلود رو باید پیدا کنیم
+        // دانلود + آپلود به کش + ارسال
         // ─────────────────────────────────────────────────
+        $bestLink = $songFileService->getBestDownloadLink($song);
+        if (!$bestLink) {
+            $this->downloadLinkNotFound($telegram, $notifier, $song, $userId, 'لینک دانلود خراب');
+            return;
+        }
+
+        $fileIdColumn = "telegram_file_id_{$bestLink->quality}";
         $tempDirectory = 'temp/' . Str::uuid();
         Storage::disk('local')->makeDirectory($tempDirectory);
 
         try {
-            // ۱. دانلود
-            $downloadUrl  = $this->resolveDownloadUrl($song);
+            $downloadUrl  = $bestLink->download_url;
             $fileName     = $this->generateFileName($song);
             $originalFile = $this->downloadSong($downloadUrl, $tempDirectory);
-
-            // ۲. ffmpeg
-            $cleanFile = $this->removeMetadata($originalFile, $tempDirectory, $fileName);
+            $cleanFile = $this->addMetadata($originalFile, $tempDirectory, $fileName);
 
             // ۳. آپلود به کانال Cache
             $cacheResult = $telegram->uploadAudioToCacheChannel($cleanFile, $song);
@@ -158,21 +167,38 @@ class ProcessMusicDownloadJob implements ShouldQueue
             // ── بررسی نتیجه نهایی ارسال ──
             if ($response->successful()) {
                 $song->increment('downloads_count');
-                $this->onSendSuccess($telegram, $notifier, $botUserService, $song, $userId);
+                $this->onSendSuccess($telegram, $notifier, $botUserService, $song, $userId, $bestLink->quality);
             } else {
                 $this->onSendFailure(
-                    $response,
+                    $telegram,
                     $notifier,
                     $botUserService,
                     $song,
                     $userId,
-                    $response->json('description', 'خطای ناشناخته')
+                    $response->json('description', 'خطای ناشناخته'),
+                    $bestLink->quality
                 );
             }
         } finally {
             // همیشه temp رو پاک کن
             Storage::disk('local')->deleteDirectory($tempDirectory);
         }
+    }
+
+    private function downloadLinkNotFound(
+        TelegramService $telegram,
+        NotificationService $notifier,
+        Song $song,
+        int $userId,
+        string $error,
+    ) {
+        $telegram->editMessageText(
+            $this->chatId,
+            $this->messageId,
+            "آهنگ با موفقیت در صف دانلود قرار گرفت 🎤✅ \n\n" . $song->title . " - " . $song->artist_name,
+            []
+        );
+        $notifier->songSendFailed($song, $this->chatId, '320', $error, 'telegram', $userId);
     }
 
     // ─────────────────────────────────────────────────
@@ -185,6 +211,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
         BotUserService $botUserService,
         Song $song,
         int $userId,
+        $quality
     ): void {
         // ارسال متن آهنگ (اگه داشته باشه) + حذف پیام "در حال آماده‌سازی"
         if ($song->lyrics) {
@@ -195,7 +222,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
         }
 
         // ✅ نوتیفیکیشن + ریست شمارش خطا
-        $notifier->songSent($song, $this->chatId, $this->quality, 'telegram', $userId);
+        $notifier->songSent($song, $this->chatId, $quality, 'telegram', $userId);
         $botUserService->recordSuccessfulSend($userId, 'telegram');
     }
 
@@ -204,20 +231,20 @@ class ProcessMusicDownloadJob implements ShouldQueue
     // ─────────────────────────────────────────────────
 
     private function onSendFailure(
-        $response,
+        TelegramService $telegram,
         NotificationService $notifier,
         BotUserService $botUserService,
         Song $song,
         int $userId,
         string $error,
+        $quality
     ): void {
         // ❌ نوتیفیکیشن خطا + ثبت خطای ارسال (برای تشخیص بلاک‌شدن)
-        $notifier->songSendFailed($song, $this->chatId, $this->quality, $error, 'telegram', $userId);
+        $notifier->songSendFailed($song, $this->chatId, $quality, $error, 'telegram', $userId);
         $botUserService->recordFailedSend($userId, 'telegram');
 
         // به کاربر اطلاع بده
         if ($this->messageId) {
-            $telegram = app(TelegramService::class);
             try {
                 $telegram->editMessageText(
                     $this->chatId,
@@ -239,7 +266,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
     {
         Log::error('Music download job failed permanently', [
             'song_id'    => $this->songId,
-            'quality'    => $this->quality,
+            'quality'    => '320',
             'chat_id'    => $this->chatId,
             'message_id' => $this->messageId,
             'error'      => $exception->getMessage(),
@@ -253,7 +280,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
                 'telegram',
                 [
                     'song_id'    => $this->songId,
-                    'quality'    => $this->quality,
+                    'quality'    => '320',
                     'chat_id'    => $this->chatId,
                     'message_id' => $this->messageId,
                 ]
@@ -281,13 +308,6 @@ class ProcessMusicDownloadJob implements ShouldQueue
     // Helper methods
     // ─────────────────────────────────────────────────
 
-    private function resolveDownloadUrl(Song $song): string
-    {
-        return $this->quality === '128'
-            ? $song->download_link_128
-            : $song->download_link_320;
-    }
-
     private function generateFileName(Song $song): string
     {
         return preg_replace(
@@ -309,7 +329,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
         return $path;
     }
 
-    private function removeMetadata(string $input, string $dir, string $fileName, ?string $customTitle = null): string
+    private function addMetadata(string $input, string $dir, string $fileName, ?string $customTitle = null): string
     {
         $channel = '@music_jangi';
         $outputDir = storage_path("app/private/{$dir}");

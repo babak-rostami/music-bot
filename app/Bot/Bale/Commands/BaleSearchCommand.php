@@ -1,11 +1,11 @@
 <?php
 
-namespace App\BaleBot\Commands;
+namespace App\Bot\Bale\Commands;
 
+use App\Bot\Bale\Services\BaleService;
 use App\Models\Song;
 use App\Models\SongRequest;
 use App\Services\AdminNotifier;
-use App\Services\BaleService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 

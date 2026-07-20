@@ -2,7 +2,11 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Bot\Bale\Services\BaleService;
+use App\Bot\Telegram\Services\TelegramService;
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessBaleMusicDownloadJob;
+use App\Jobs\ProcessMusicDownloadJob;
 use App\Models\BotUser;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -11,22 +15,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class BotUserController extends Controller
 {
-    /**
-     * سرویس‌های تلگرام و بله (در صورتی که از طریق Dependency Injection تزریق شوند یا از طریق app() فراخوانی گردند)
-     */
-    protected $telegramService;
-    protected $baleService;
-
-    public function __construct()
-    {
-        // تلاش برای رزرو سرویس‌ها در صورت وجود در سرویس کانتینر
-        if (class_exists(\App\Services\TelegramService::class)) {
-            $this->telegramService = app(\App\Services\TelegramService::class);
-        }
-        if (class_exists(\App\Services\BaleService::class)) {
-            $this->baleService = app(\App\Services\BaleService::class);
-        }
-    }
+    public function __construct(
+        protected TelegramService $telegramService,
+        protected BaleService $baleService,
+    ) {}
 
     /**
      * نمایش لیست کاربران ربات همراه با آمار و قابلیت جستجو و فیلتر پیشرفته
@@ -116,44 +108,32 @@ class BotUserController extends Controller
             if ($platform === BotUser::PLATFORM_TELEGRAM) {
                 // ۱. ارسال آهنگ تلگرام (در صورت وارد شدن شناسه آهنگ)
                 if ($songId > 0) {
-                    if (class_exists(\App\Jobs\ProcessMusicDownloadJob::class)) {
-                        \App\Jobs\ProcessMusicDownloadJob::dispatch(
-                            $songId,
-                            '320',
-                            $chatId,
-                            null
-                        )->onQueue('download-music');
-                    }
+                    ProcessMusicDownloadJob::dispatch(
+                        $songId,
+                        '320',
+                        $chatId,
+                        null
+                    )->onQueue('download-music');
                 }
 
                 // ۲. ارسال پیام متنی تلگرام
                 if ($shouldSendMessage && $messageText !== null) {
-                    if ($this->telegramService) {
-                        $this->telegramService->sendMessage($chatId, $messageText);
-                    } elseif (class_exists(\App\Services\TelegramService::class)) {
-                        app(\App\Services\TelegramService::class)->sendMessage($chatId, $messageText);
-                    }
+                    $this->telegramService->sendMessage($chatId, $messageText);
                 }
             } elseif ($platform === BotUser::PLATFORM_BALE) {
                 // ۱. ارسال آهنگ بله (در صورت وارد شدن شناسه آهنگ)
                 if ($songId > 0) {
-                    if (class_exists(\App\Jobs\ProcessBaleMusicDownloadJob::class)) {
-                        \App\Jobs\ProcessBaleMusicDownloadJob::dispatch(
-                            $songId,
-                            '320',
-                            $chatId,
-                            null
-                        )->onQueue('download-music');
-                    }
+                    ProcessBaleMusicDownloadJob::dispatch(
+                        $songId,
+                        '320',
+                        $chatId,
+                        null
+                    )->onQueue('download-music');
                 }
 
                 // ۲. ارسال پیام متنی بله
                 if ($shouldSendMessage && $messageText !== null) {
-                    if ($this->baleService) {
-                        $this->baleService->sendMessage($chatId, $messageText);
-                    } elseif (class_exists(\App\Services\BaleService::class)) {
-                        app(\App\Services\BaleService::class)->sendMessage($chatId, $messageText);
-                    }
+                    $this->baleService->sendMessage($chatId, $messageText);
                 }
             }
 

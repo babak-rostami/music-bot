@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services;
+namespace App\Bot;
 
 use App\Models\BotUser;
 use Illuminate\Support\Facades\Log;

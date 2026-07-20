@@ -1,7 +1,9 @@
 <?php
 
-namespace App\Services;
+namespace App\Bot;
 
+use App\Bot\Bale\Services\BaleService;
+use App\Bot\Telegram\Services\TelegramService;
 use App\Models\ActivityLog;
 use App\Models\BotUser;
 use Illuminate\Support\Facades\Log;
@@ -249,7 +251,7 @@ class NotificationService
     public function songSendFailed($song, int|string $chatId, string $quality, string $error, string $platform, ?int $userId = null): void
     {
         $html  = "❌ <b>ارسال آهنگ ناموفق</b>\n\n";
-        $html .= "🎧 <b>عنوان:</b> " . e($song->title) . "\n";
+        $html .= "🎧 <b>عنوان:</b> " . e($song->title . ' ' . $song->artist_name) . "\n";
         $html .= "🎚 <b>کیفیت:</b> {$quality}\n";
         $html .= "🤖 <b>پلتفرم:</b> {$this->platformName($platform)}\n";
         $html .= "📥 <b>chat_id:</b> <code>{$chatId}</code>\n";

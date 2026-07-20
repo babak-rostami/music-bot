@@ -1,9 +1,9 @@
 <?php
 
-namespace App\BaleBot\Commands;
+namespace App\Bot\Bale\Commands;
 
-use App\BaleBot\Actions\BaleShowDownloadOptionsAction;
-use App\Services\BaleService;
+use App\Bot\Bale\Actions\BaleShowDownloadOptionsAction;
+use App\Bot\Bale\Services\BaleService;
 
 class BaleStartCommand
 {

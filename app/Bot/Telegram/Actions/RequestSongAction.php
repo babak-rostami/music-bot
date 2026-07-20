@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Telegram\Actions;
+namespace App\Bot\Telegram\Actions;
 
+use App\Bot\Telegram\Services\TelegramService;
 use App\Models\SongRequest;
 use App\Services\AdminNotifier;
-use App\Services\TelegramService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 

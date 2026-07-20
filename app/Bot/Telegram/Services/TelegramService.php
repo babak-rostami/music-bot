@@ -1,22 +1,17 @@
 <?php
 
-namespace App\Services;
+namespace App\Bot\Telegram\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-/**
- * سرویس ارتباط با API بله
- * دقیقاً مشابه TelegramService با همان ساختار متدها
- */
-class BaleService
+class TelegramService
 {
     protected string $apiUrl;
 
     public function __construct()
     {
-        // ✅ تصحیح شد: tapi.bale.ai (نه api.bale.ai/v1/bots/)
-        $this->apiUrl = 'https://tapi.bale.ai/bot' . config('telegram.bale_bot_token');
+        $this->apiUrl = 'https://api.telegram.org/bot' . config('telegram.bot_token');
     }
 
     /**
@@ -24,8 +19,8 @@ class BaleService
      *
      * @param int|string $chatId
      * @param string $text
-     * @param array|null $inlineKeyboard
-     * @param string|null $parseMode فقط 'HTML' پشتیبانی می‌شود
+     * @param array|null $inlineKeyboard  آرایه دکمه‌ها (مثلاً [['text' => '...', 'callback_data' => '...']])
+     * @param string|null $parseMode     'HTML' | 'MarkdownV2' | null (plain text)
      */
     public function sendMessage(
         int|string $chatId,
@@ -34,12 +29,12 @@ class BaleService
         ?string $parseMode = null
     ) {
         $payload = [
-            'chat_id' => (string) $chatId,
+            'chat_id' => $chatId,
             'text'    => $text,
         ];
 
-        if ($parseMode === 'HTML') {
-            $payload['parse_mode'] = 'HTML';
+        if ($parseMode) {
+            $payload['parse_mode'] = $parseMode;
         }
 
         if ($inlineKeyboard) {
@@ -51,9 +46,6 @@ class BaleService
         return Http::post($this->apiUrl . '/sendMessage', $payload);
     }
 
-    /**
-     * ویرایش پیام متنی
-     */
     public function editMessageText(
         int|string $chatId,
         int $messageId,
@@ -62,13 +54,13 @@ class BaleService
         ?string $parseMode = null
     ) {
         $payload = [
-            'chat_id'    => (string) $chatId,
+            'chat_id'    => $chatId,
             'message_id' => $messageId,
             'text'       => $text,
         ];
 
-        if ($parseMode === 'HTML') {
-            $payload['parse_mode'] = 'HTML';
+        if ($parseMode) {
+            $payload['parse_mode'] = $parseMode;
         }
 
         if ($inlineKeyboard !== null) {
@@ -81,32 +73,26 @@ class BaleService
     }
 
     /**
-     * حذف پیام
+     * یک پیام را از چت حذف می‌کند.
      */
     public function deleteMessage(int|string $chatId, int $messageId)
     {
         return Http::post($this->apiUrl . '/deleteMessage', [
-            'chat_id'    => (string) $chatId,
+            'chat_id'    => $chatId,
             'message_id' => $messageId,
         ]);
     }
 
-    /**
-     * ارسال فایل صوتی با آپلود multipart
-     */
     public function sendAudio(int|string $chatId, string $filePath, string $fileName, string $title, string $performer)
     {
         return Http::attach('audio', fopen($filePath, 'r'), $fileName)
             ->post($this->apiUrl . '/sendAudio', [
-                'chat_id'   => (string) $chatId,
+                'chat_id'   => $chatId,
                 'title'     => $title,
                 'performer' => $performer,
             ]);
     }
 
-    /**
-     * پاسخ به callback query
-     */
     public function answerCallbackQuery(string $callbackQueryId, ?string $text = null)
     {
         return Http::post($this->apiUrl . '/answerCallbackQuery', [
@@ -115,33 +101,30 @@ class BaleService
         ]);
     }
 
-    /**
-     * ارسال صوت با file_id (برای کش)
-     */
     public function sendAudioByFileId(int|string $chatId, string $fileId, string $title, string $performer)
     {
         return Http::post($this->apiUrl . '/sendAudio', [
-            'chat_id'   => (string) $chatId,
+            'chat_id'   => $chatId,
             'audio'     => $fileId,
             'title'     => $title,
             'performer' => $performer,
         ]);
     }
 
-    /**
-     * آپلود صوت به کانال کش بله
-     */
     public function uploadAudioToCacheChannel(string $filePath, $song): ?array
     {
-        $cacheChannelId = config('telegram.bale_cache_channel_id');
+        $cacheChannelId = config('telegram.cache_channel_id');
 
         if (!$cacheChannelId) {
             return null;
         }
 
+        // فقط فایل صوتی رو می‌فرستیم به کانال کش
+        // متن آهنگ رو جداگانه فقط به کاربر می‌فرستیم (نه به کانال کش)
+        // اینجوری کانال کش فقط audio message داره و شلوغ نمیشه
         $response = Http::attach('audio', fopen($filePath, 'r'), basename($filePath))
             ->post($this->apiUrl . '/sendAudio', [
-                'chat_id'   => (string) $cacheChannelId,
+                'chat_id'   => $cacheChannelId,
                 'title'     => $song->title,
                 'performer' => $song->artist_name,
             ]);
@@ -158,17 +141,17 @@ class BaleService
     }
 
     /**
-     * بررسی عضویت کاربر در کانال/گروه
+     * بررسی عضویت یک کاربر در یک چت (کانال/گروه)
      */
     public function getChatMember(string|int $chatId, int $userId): ?array
     {
         $response = Http::post($this->apiUrl . '/getChatMember', [
-            'chat_id' => (string) $chatId,
+            'chat_id' => $chatId,
             'user_id' => $userId,
         ]);
 
         if (!$response->successful()) {
-            Log::warning('Bale getChatMember failed', [
+            Log::warning('Telegram getChatMember failed', [
                 'chat_id' => $chatId,
                 'user_id' => $userId,
                 'status'  => $response->status(),
@@ -178,5 +161,44 @@ class BaleService
         }
 
         return $response->json('result');
+    }
+
+    /**
+     * فوروارد کردن پیام در تلگرام
+     */
+    public function forwardMessage(
+        int|string $fromChatId,
+        int $messageId,
+        int|string|null $toChatId = null
+    ) {
+        // اگر چت مقصد مشخص نشده بود، از کانال کش کانفیگ استفاده کن
+        $toChatId = $toChatId ?? config('telegram.cache_channel_id');
+
+        $payload = [
+            'chat_id'      => $toChatId,
+            'from_chat_id' => $fromChatId,
+            'message_id'   => $messageId,
+        ];
+
+        return Http::post($this->apiUrl . '/forwardMessage', $payload);
+    }
+
+    /**
+     * کپی کردن پیام در تلگرام (بدون برچسب فوروارد)
+     */
+    public function copyMessage(
+        int|string $fromChatId,
+        int $messageId,
+        int|string|null $toChatId = null
+    ) {
+        $toChatId = $toChatId ?? config('telegram.cache_channel_id');
+
+        $payload = [
+            'chat_id'      => $toChatId,
+            'from_chat_id' => $fromChatId,
+            'message_id'   => $messageId,
+        ];
+
+        return Http::post($this->apiUrl . '/copyMessage', $payload);
     }
 }

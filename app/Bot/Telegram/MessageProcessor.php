@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Telegram;
+namespace App\Bot\Telegram;
 
-use App\Services\TelegramService;
-use App\Telegram\Commands\SearchCommand;
-use App\Telegram\Commands\StartCommand;
-use App\Telegram\Contracts\CommandHandlerInterface;
+use App\Bot\Telegram\Commands\SearchCommand;
+use App\Bot\Telegram\Commands\StartCommand;
+use App\Bot\Telegram\Contracts\CommandHandlerInterface;
+use App\Bot\Telegram\Services\TelegramService;
 
 class MessageProcessor
 {

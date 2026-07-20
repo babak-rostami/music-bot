@@ -1,10 +1,10 @@
 <?php
 
-namespace App\BaleBot;
+namespace App\Bot\Bale;
 
-use App\BaleBot\Commands\BaleStartCommand;
-use App\BaleBot\Commands\BaleSearchCommand;
-use App\Services\BaleService;
+use App\Bot\Bale\Commands\BaleSearchCommand;
+use App\Bot\Bale\Commands\BaleStartCommand;
+use App\Bot\Bale\Services\BaleService;
 
 class MessageProcessor
 {

@@ -1,12 +1,12 @@
 <?php
 
-namespace App\Telegram\Commands;
+namespace App\Bot\Telegram\Commands;
 
+use App\Bot\Telegram\Contracts\CommandHandlerInterface;
+use App\Bot\Telegram\Services\TelegramService;
 use App\Models\Song;
 use App\Models\SongRequest;
 use App\Services\AdminNotifier;
-use App\Services\TelegramService;
-use App\Telegram\Contracts\CommandHandlerInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 

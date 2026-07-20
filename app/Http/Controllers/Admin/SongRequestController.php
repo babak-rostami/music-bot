@@ -2,25 +2,18 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Bot\Bale\Services\BaleService;
+use App\Bot\Telegram\Services\TelegramService;
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessBaleMusicDownloadJob;
 use App\Jobs\ProcessMusicDownloadJob;
 use App\Models\Song;
 use App\Models\SongRequest;
-use App\Services\BaleService;
-use App\Services\TelegramService;
 use Illuminate\Http\Request;
 
 class SongRequestController extends Controller
 {
-    private $telegramService;
-    private $baleService;
-
-    public function __construct(TelegramService $telegramService, BaleService $baleService)
-    {
-        $this->telegramService = $telegramService;
-        $this->baleService = $baleService;
-    }
+    public function __construct(private TelegramService $telegramService, private BaleService $baleService) {}
 
     public function index(Request $request)
     {

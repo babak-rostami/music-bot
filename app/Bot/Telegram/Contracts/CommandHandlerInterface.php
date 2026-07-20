@@ -1,6 +1,7 @@
 <?php
 
-namespace App\Telegram\Contracts;
+namespace App\Bot\Telegram\Contracts;
+
 
 interface CommandHandlerInterface
 {
