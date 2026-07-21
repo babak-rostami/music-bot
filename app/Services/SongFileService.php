@@ -6,6 +6,7 @@ use App\Models\Song;
 use App\Models\SongDownloadLink;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class SongFileService
 {
@@ -26,7 +27,6 @@ class SongFileService
         foreach ($this->qualityPriority as $quality) {
             $column = "{$platform}_file_id_{$quality}";
 
-            // اگه ستون وجود نداشت، برو بعدی
             if (! array_key_exists($column, $song->getAttributes())) {
                 continue;
             }
@@ -46,23 +46,21 @@ class SongFileService
     }
 
     /**
-     * گرفتن بهترین لینک دانلود بر اساس کیفیت و اولویت درخواست‌های موفق
-     * هر بار که یه لینک انتخاب میشه، اولویتش 1 دونه زیاد میشه
+     * دانلود آهنگ از بهترین لینک موجود
+     * اول کیفیت 320 رو امتحان می‌کنه بعد 128
+     * هر بار که یه لینک موفق دانلود بشه، priority اش 1 دونه زیاد میشه
+     * اگه دانلود شکست بخوره، priority اون لینک 0 میشه (ریست)
      *
-     * @return SongDownloadLink|null
+     * @param  string  $tempDirectory  مثلا "temp/abc-123"
+     * @return array{path: string, quality: string, link_id: int}|null
      */
-    public function getBestDownloadLink(Song $song): ?SongDownloadLink
+    public function downloadBestSong(Song $song, string $tempDirectory): ?array
     {
-        // سورت بر اساس کیفیت (320 اول) بعد اولویت (بیشترین اولویت اول)
         $links = $song->downloadLinks()
             ->get(['id', 'quality', 'download_url', 'priority'])
             ->sortBy([
-                // کیفیت 320 اول بیاد، بعد 128
                 ['quality', 'desc'],
-                // بیشترین اولویت اول
                 ['priority', 'desc'],
-                // اگه اولویت برابر بود، بر اساس کیفیت به ترتیب priority آرایه
-                fn($a, $b) => array_search($a->quality, $this->qualityPriority) <=> array_search($b->quality, $this->qualityPriority),
             ])
             ->values();
 
@@ -70,33 +68,76 @@ class SongFileService
             return null;
         }
 
-        // اول 320 رو امتحان کن
-        $link320 = $links->firstWhere('quality', '320');
-        if ($link320) {
-            if ($this->pingUrl($link320)) {
-                $link320->increment('priority');
-                return $link320;
-            }
+        $fullPath = storage_path("app/private/{$tempDirectory}");
+        if (! is_dir($fullPath)) {
+            mkdir($fullPath, 0755, true);
         }
 
-        // اگه 320 جواب نداد، 128 رو امتحان کن
-        $link128 = $links->firstWhere('quality', '128');
-        if ($link128) {
-            if ($this->pingUrl($link128)) {
-                $link128->increment('priority');
-                return $link128;
+        foreach ($links as $link) {
+            try {
+                $result = $this->downloadSong($link->download_url, $tempDirectory);
+            } catch (\Throwable $e) {
+                Log::error('downloadSong exception', [
+                    'link_id' => $link->id,
+                    'error'   => $e->getMessage(),
+                ]);
+                $result = null;
             }
+
+            if ($result !== null) {
+                $link->increment('priority');
+
+                return [
+                    'path'    => $result,
+                    'quality' => $link->quality,
+                    'link_id' => $link->id,
+                ];
+            }
+
+            // شکست خورد → priority رو ریست کن به 0
+            // مستقیم از query builder استفاده می‌کنیم تا مطمئن بشیم آپدیت میشه
+            $updated = SongDownloadLink::where('id', $link->id)
+                ->update(['priority' => 0]);
+
+            Log::warning('دانلود شکست خورد، priority ریست شد', [
+                'song_id'         => $song->id,
+                'link_id'         => $link->id,
+                'quality'         => $link->quality,
+                'rows_affected'   => $updated
+            ]);
         }
 
         return null;
     }
 
     /**
-     * فقط یه درخواست سبک HEAD می‌زنه ببینه لینک زنده هست یا نه
-     * فایل دانلود نمیشه
+     * دانلود واقعی فایل از یه URL
+     * اگه موفق بود مسیر فایل رو برمی‌گردونه
+     * اگه شکست خورد null برمی‌گردونه
      */
-    protected function pingUrl(SongDownloadLink $link): bool
+    protected function downloadSong(string $url, string $dir): ?string
     {
+        $path = storage_path("app/private/{$dir}/original.mp3");
+
+        $directory = dirname($path);
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        // فایل قدیمی رو پاک کن اگه هست
+        if (file_exists($path)) {
+            @unlink($path);
+        }
+
+        $stream = @fopen($path, 'w');
+
+        if ($stream === false) {
+            Log::error('نتوانست فایل را برای نوشتن باز کند', [
+                'path' => $path,
+            ]);
+            return null;
+        }
+
         try {
             $response = Http::withoutVerifying()
                 ->withHeaders([
@@ -104,17 +145,62 @@ class SongFileService
                     'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language' => 'fa-IR,fa;q=0.9,en;q=0.5',
                 ])
-                ->timeout(5) // برای پینگ تایم‌اوت کم کافیه
-                ->connectTimeout(3)
-                ->head($link->download_url);
-
-            return $response->successful(); // 200 تا 299
+                ->timeout(300)
+                ->connectTimeout(15)  // اتصال اولیه 15 ثانیه
+                ->withOptions(['sink' => $stream])
+                ->get($url);
         } catch (\Throwable $e) {
-            Log::warning('پینگ لینک دانلود شکست خورد', [
-                'link_id' => $link->id,
+            // stream رو اگه هنوز بازه ببند
+            if (is_resource($stream)) {
+                @fclose($stream);
+            }
+
+            $this->cleanupFailedDownload($path);
+
+            Log::error('خطا در دانلود آهنگ (exception)', [
+                'url'   => $url,
                 'error' => $e->getMessage(),
             ]);
-            return false;
+
+            return null;
+        }
+
+        // stream رو بعد از request ببند (حتی اگه Guzzle خودش بسته باشه)
+        if (is_resource($stream)) {
+            @fclose($stream);
+        }
+
+        // چک وضعیت response
+        if (! isset($response) || ! $response->successful()) {
+            $this->cleanupFailedDownload($path);
+            Log::warning('دانلود ناموفق - وضعیت نامعتبر', [
+                'url'    => $url,
+                'status' => isset($response) ? $response->status() : 'no response',
+            ]);
+            return null;
+        }
+
+        // چک کن فایل واقعا دانلود شده و خالی نیست
+        if (! file_exists($path) || filesize($path) < 1024) {
+            $this->cleanupFailedDownload($path);
+            Log::warning('فایل دانلود شده خالی یا نامعتبر است', [
+                'url'      => $url,
+                'size'     => file_exists($path) ? filesize($path) : 0,
+                'exists'   => file_exists($path),
+            ]);
+            return null;
+        }
+
+        return $path;
+    }
+
+    /**
+     * پاک کردن فایل دانلود نشده
+     */
+    protected function cleanupFailedDownload(string $path): void
+    {
+        if (file_exists($path)) {
+            @unlink($path);
         }
     }
 }

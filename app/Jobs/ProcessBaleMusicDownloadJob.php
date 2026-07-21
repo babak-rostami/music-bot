@@ -116,21 +116,32 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         // 2. کش نشده بود پس بهترین لینک دانلود رو باید پیدا کنیم
         // دانلود + آپلود به کش + ارسال
         // ─────────────────────────────────────────────────
-        $bestLink = $songFileService->getBestDownloadLink($song);
-        if (!$bestLink) {
-            $this->downloadLinkNotFound($bale, $notifier, $song, $userId, 'لینک دانلود خراب');
-            return;
-        }
-
-        $fileIdColumn = "bale_file_id_{$bestLink->quality}";
         $tempDirectory = 'temp/' . Str::uuid();
-        Storage::disk('local')->makeDirectory($tempDirectory);
-
         try {
-            $downloadUrl = $bestLink->download_url;
+            Storage::disk('local')->makeDirectory($tempDirectory);
+
+            // دانلود آهنگ از سرویس
+            try {
+                $result = $songFileService->downloadBestSong($song, $tempDirectory);
+            } catch (\Throwable $e) {
+                Log::error('خطا در دانلود آهنگ از سرویس', [
+                    'song_id' => $song->id,
+                    'error'   => $e->getMessage(),
+                ]);
+                $this->downloadLinkNotFound($bale, $notifier, $song, $userId, 'خطا در دانلود');
+                return;
+            }
+            if (! $result) {
+                $this->downloadLinkNotFound($bale, $notifier, $song, $userId, 'لینک دانلود خراب');
+                return;
+            }
+
+            $originalFile = $result['path'];
+            $quality      = $result['quality'];
+
+            $fileIdColumn = "bale_file_id_{$quality}";
             $fileName = $this->generateFileName($song);
-            $originalFile = $this->downloadSong($downloadUrl, $tempDirectory);
-            $cleanFile = $this->removeMetadata($originalFile, $tempDirectory, $fileName);
+            $cleanFile = $this->addMetadata($originalFile, $tempDirectory, $fileName);
 
             // آپلود به کانال Cache بله
             $cacheResult = $bale->uploadAudioToCacheChannel($cleanFile, $song);
@@ -166,7 +177,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
             // ── بررسی نتیجه نهایی ارسال ──
             if ($response->successful()) {
                 $song->increment('downloads_count');
-                $this->onSendSuccess($bale, $notifier, $botUserService, $song, $userId, $bestLink->quality);
+                $this->onSendSuccess($bale, $notifier, $botUserService, $song, $userId, $quality);
             } else {
                 $this->onSendFailure(
                     $bale,
@@ -175,7 +186,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
                     $song,
                     $userId,
                     $response->json('description', 'خطای ناشناخته'),
-                    $bestLink->quality
+                    $quality
                 );
             }
         } finally {
@@ -191,12 +202,14 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         int $userId,
         string $error
     ) {
-        $bale->editMessageText(
-            $this->chatId,
-            $this->messageId,
-            "آهنگ با موفقیت در صف دانلود قرار گرفت 🎤✅ \n\n" . $song->title . " - " . $song->artist_name,
-            []
-        );
+        if ($this->messageId) {
+            $bale->editMessageText(
+                $this->chatId,
+                $this->messageId,
+                "آهنگ با موفقیت در صف دانلود قرار گرفت 🎤✅ \n\n" . $song->title . " - " . $song->artist_name,
+                []
+            );
+        }
         $notifier->songSendFailed($song, $this->chatId, '320', $error, 'bale', $userId);
     }
 
@@ -272,7 +285,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
             'song_id'    => $this->songId,
             'quality'    => '320',
             'chat_id'    => $this->chatId,
-            'message_id' => $this->messageId,
+            'message_id' => $this->messageId ?? null,
             'error'      => $exception->getMessage(),
         ]);
 
@@ -288,7 +301,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
                     'song_id'    => $this->songId,
                     'quality'    => '320',
                     'chat_id'    => $this->chatId,
-                    'message_id' => $this->messageId,
+                    'message_id' => $this->messageId ?? null,
                 ]
             );
         } catch (Throwable $e) {
@@ -324,7 +337,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         return $path;
     }
 
-    private function removeMetadata(string $input, string $dir, string $fileName, ?string $customTitle = null): string
+    private function addMetadata(string $input, string $dir, string $fileName, ?string $customTitle = null): string
     {
         $channel = '@music_jangi';
         $outputDir = storage_path("app/private/{$dir}");

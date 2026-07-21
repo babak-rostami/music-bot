@@ -84,7 +84,7 @@ class SongUploadService
         // ─────────────────────────────────────────────────
         // Cache Miss → ارسال به صف
         // ─────────────────────────────────────────────────
-        ProcessMusicDownloadJob::dispatch($song->id, $quality, $chatId, $messageId)
+        ProcessMusicDownloadJob::dispatch($song->id, $chatId, $messageId)
             ->onQueue('download-music');
     }
 
@@ -183,7 +183,6 @@ class SongUploadService
         // ─────────────────────────────────────────────────
         ProcessBaleMusicDownloadJob::dispatch(
             $song->id,
-            $quality,
             $chatId,
             $messageId,
             $lockKey,

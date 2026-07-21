@@ -110,7 +110,6 @@ class BotUserController extends Controller
                 if ($songId > 0) {
                     ProcessMusicDownloadJob::dispatch(
                         $songId,
-                        '320',
                         $chatId,
                         null
                     )->onQueue('download-music');
@@ -125,7 +124,6 @@ class BotUserController extends Controller
                 if ($songId > 0) {
                     ProcessBaleMusicDownloadJob::dispatch(
                         $songId,
-                        '320',
                         $chatId,
                         null
                     )->onQueue('download-music');

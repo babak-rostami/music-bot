@@ -450,8 +450,8 @@ class Bia2MusicCrawlerService
             $this->fillMissingSongFields($song, $data);
         }
 
-        $this->storeDownloadLink($song, '128', $data->downloadLink128);
         $this->storeDownloadLink($song, '320', $data->downloadLink320);
+        $this->storeDownloadLink($song, '128', $data->downloadLink128);
 
         return $song;
     }

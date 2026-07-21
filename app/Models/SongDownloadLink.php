@@ -12,6 +12,7 @@ class SongDownloadLink extends Model
         'provider',
         'quality',
         'download_url',
+        'priority',
     ];
 
     public function song(): BelongsTo

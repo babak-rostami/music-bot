@@ -71,7 +71,6 @@ class SongRequestController extends Controller
                     if ($songRequest->platform == "telegram") {
                         ProcessMusicDownloadJob::dispatch(
                             $song->id,
-                            '320',
                             $songRequest->chat_id,
                             null,
                         )->onQueue('download-music');
@@ -82,7 +81,6 @@ class SongRequestController extends Controller
                     } elseif ($songRequest->platform == "bale") {
                         ProcessBaleMusicDownloadJob::dispatch(
                             $song->id,
-                            '320',
                             $songRequest->chat_id,
                             null,
                         )->onQueue('download-music');
