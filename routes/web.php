@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\ArtistController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\LoginController;
 use App\Http\Controllers\Admin\SongController;
+use App\Http\Controllers\Admin\SongDownloadLinkController;
 use App\Http\Controllers\Admin\SongRequestController;
 use App\Http\Controllers\Admin\SongSearchQueryController;
 use App\Http\Controllers\Admin\UserController;
@@ -46,6 +47,15 @@ Route::prefix('admin_page')->name('admin.')->group(function () {
 
         // مدیریت آهنگ‌ها
         Route::resource('songs', SongController::class);
+        // نمایش لیست لینک‌های دانلود یک آهنگ
+        Route::get('song-download-link/{id}', [SongDownloadLinkController::class, 'index'])
+            ->name('song.download.link.index');
+        Route::put('song-download-link/{downloadLink}', [SongDownloadLinkController::class, 'update'])
+            ->name('song.download.link.update');
+        Route::delete('song-download-link/{downloadLink}', [SongDownloadLinkController::class, 'destroy'])
+            ->name('song.download.link.destroy');
+        // تست لینک دانلود
+        Route::post('test-link', [SongDownloadLinkController::class, 'testLink'])->name('test.link');
 
         // مسیرهای مدیریت خوانندگان (Artists)
         Route::resource('artists', ArtistController::class);

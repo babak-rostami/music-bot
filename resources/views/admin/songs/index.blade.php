@@ -22,6 +22,15 @@
     {{-- جستجو --}}
     {{-- ═══════════════════════════════════════════════════ --}}
     <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 mb-6">
+        <button onclick="openLinkTesterModal()"
+            class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 transition"
+            title="تست لینک">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+            </svg>
+            تست لینک
+        </button>
         <form method="GET" action="{{ route('admin.songs.index') }}" class="flex flex-wrap gap-4 items-end">
 
             <div class="flex-1 min-w-[200px]">
@@ -121,6 +130,12 @@
                                                 d="M2.458 12C3.732 7.943 7.523 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.065 7-9.542 7S3.732 16.057 2.458 12z" />
                                         </svg>
                                     </a>
+                                    {{-- لینک های دانلود --}}
+                                    <a href="{{route('admin.song.download.link.index', $song->id)}}" target="_blank"
+                                        rel="noopener" title="لینک های دانلود"
+                                        class="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors">
+                                        🔗
+                                    </a>
                                     {{-- ویرایش --}}
                                     <a href="{{ route('admin.songs.edit', $song) }}" title="ویرایش"
                                         class="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
@@ -165,4 +180,234 @@
         @endif
     </div>
 
+
+
+    {{-- ============================================= --}}
+    {{-- مودال تست لینک --}}
+    {{-- ============================================= --}}
+
+    <div id="linkTesterModal" class="fixed inset-0 z-50 hidden items-center justify-center" role="dialog" aria-modal="true">
+        {{-- Overlay --}}
+        <div class="absolute inset-0 bg-black/50" onclick="closeLinkTesterModal()"></div>
+
+        {{-- Modal Content --}}
+        <div class="relative w-full max-w-lg mx-4 rounded-2xl bg-white shadow-2xl">
+            {{-- Header --}}
+            <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                <h3 class="text-lg font-bold text-gray-800">🔗 تست لینک دانلود</h3>
+                <button onclick="closeLinkTesterModal()"
+                    class="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            {{-- Body --}}
+            <div class="px-6 py-5 space-y-4">
+                {{-- URL Input --}}
+                <div id="linkTesterInput">
+                    <label for="linkTesterUrl" class="block text-sm font-medium text-gray-700 mb-1.5">
+                        لینک مورد نظر
+                    </label>
+                    <div class="flex gap-2">
+                        <input type="url" id="linkTesterUrl" dir="ltr"
+                            class="flex-1 rounded-lg border border-gray-300 px-4 py-2.5 text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition"
+                            placeholder="https://example.com/file.mp3" onkeydown="if(event.key==='Enter'){runLinkTest()}">
+                        <button onclick="runLinkTest()" id="linkTesterBtn"
+                            class="rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-emerald-700 transition shadow-sm whitespace-nowrap">
+                            تست کن
+                        </button>
+                    </div>
+                </div>
+
+                {{-- Loading State --}}
+                <div id="linkTesterLoading" class="hidden">
+                    <div class="flex flex-col items-center gap-4 py-6">
+                        <div class="w-12 h-12 rounded-full border-4 border-emerald-100 border-t-emerald-600 animate-spin">
+                        </div>
+                        <p class="text-sm text-gray-600 font-medium">در حال بررسی لینک...</p>
+                        <p class="text-xs text-gray-400">لطفاً صبر کنید</p>
+                    </div>
+                </div>
+
+                {{-- Success State --}}
+                <div id="linkTesterSuccess" class="hidden">
+                    <div class="flex flex-col items-center gap-3 py-4">
+                        <div class="flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
+                            <svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <p class="text-lg font-bold text-green-700">لینک سالم است ✓</p>
+                    </div>
+                    <div id="linkTesterSuccessDetails" class="rounded-lg bg-green-50 border border-green-200 p-4 space-y-2">
+                    </div>
+                </div>
+
+                {{-- Error State --}}
+                <div id="linkTesterError" class="hidden">
+                    <div class="flex flex-col items-center gap-3 py-4">
+                        <div class="flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
+                            <svg class="w-7 h-7 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </div>
+                        <p id="linkTesterErrorMsg" class="text-lg font-bold text-red-700">لینک در دسترس نیست</p>
+                    </div>
+                    <div id="linkTesterErrorDetails" class="rounded-lg bg-red-50 border border-red-200 p-4 space-y-2"></div>
+                </div>
+            </div>
+
+            {{-- Footer --}}
+            <div class="flex items-center justify-end gap-3 border-t border-gray-200 px-6 py-4">
+                <button onclick="closeLinkTesterModal()"
+                    class="rounded-lg bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 transition">
+                    بستن
+                </button>
+            </div>
+        </div>
+    </div>
+
+
 @endsection
+
+@push('scripts')
+    <script>
+        function openLinkTesterModal() {
+            const modal = document.getElementById('linkTesterModal');
+
+            // Reset states
+            document.getElementById('linkTesterLoading').classList.add('hidden');
+            document.getElementById('linkTesterSuccess').classList.add('hidden');
+            document.getElementById('linkTesterError').classList.add('hidden');
+            document.getElementById('linkTesterInput').classList.remove('hidden');
+            document.getElementById('linkTesterBtn').disabled = false;
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+
+            // Focus input
+            setTimeout(() => document.getElementById('linkTesterUrl').focus(), 100);
+        }
+
+        function closeLinkTesterModal() {
+            const modal = document.getElementById('linkTesterModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+        }
+
+        function runLinkTest() {
+            const url = document.getElementById('linkTesterUrl').value.trim();
+
+            if (!url) {
+                alert('لطفاً یک لینک وارد کنید.');
+                return;
+            }
+
+            // Show loading, hide results
+            document.getElementById('linkTesterLoading').classList.remove('hidden');
+            document.getElementById('linkTesterSuccess').classList.add('hidden');
+            document.getElementById('linkTesterError').classList.add('hidden');
+            document.getElementById('linkTesterBtn').disabled = true;
+
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+            fetch('/admin_page/test-link', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({ url: url }),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('linkTesterLoading').classList.add('hidden');
+                    document.getElementById('linkTesterBtn').disabled = false;
+
+                    if (data.success) {
+                        showLinkTestSuccess(data);
+                    } else {
+                        showLinkTestError(data);
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('linkTesterLoading').classList.add('hidden');
+                    document.getElementById('linkTesterBtn').disabled = false;
+                    showLinkTestError({
+                        error: 'خطای شبکه',
+                        details: {
+                            message: error.message || 'خطا در ارتباط با سرور',
+                            type: 'network_error',
+                        },
+                    });
+                });
+        }
+
+        function showLinkTestSuccess(data) {
+            const detailsDiv = document.getElementById('linkTesterSuccessDetails');
+            let html = '';
+
+            if (data.details) {
+                if (data.details.status_code) {
+                    html += `<div class="flex justify-between text-sm"><span class="text-gray-600">Status Code:</span><span class="font-mono font-semibold text-green-700">${data.details.status_code}</span></div>`;
+                }
+                if (data.details.content_type) {
+                    html += `<div class="flex justify-between text-sm"><span class="text-gray-600">Content-Type:</span><span class="font-mono text-xs text-green-700" dir="ltr">${data.details.content_type}</span></div>`;
+                }
+                if (data.details.content_length) {
+                    html += `<div class="flex justify-between text-sm"><span class="text-gray-600">حجم فایل:</span><span class="font-semibold text-green-700">${data.details.content_length}</span></div>`;
+                }
+                if (data.details.response_time) {
+                    html += `<div class="flex justify-between text-sm"><span class="text-gray-600">زمان پاسخ:</span><span class="font-semibold text-green-700">${data.details.response_time}</span></div>`;
+                }
+            }
+
+            detailsDiv.innerHTML = html;
+            document.getElementById('linkTesterSuccess').classList.remove('hidden');
+        }
+
+        function showLinkTestError(data) {
+            const msgEl = document.getElementById('linkTesterErrorMsg');
+            const detailsDiv = document.getElementById('linkTesterErrorDetails');
+
+            msgEl.textContent = data.error || 'لینک در دسترس نیست';
+
+            let html = '';
+            if (data.details) {
+                if (data.details.status_code) {
+                    html += `<div class="flex justify-between text-sm"><span class="text-gray-600">Status Code:</span><span class="font-mono font-semibold text-red-700">${data.details.status_code}</span></div>`;
+                }
+                if (data.details.message) {
+                    html += `<div class="mt-2"><span class="block text-sm text-gray-600 mb-1">جزئیات خطا:</span><p class="text-sm text-red-600 bg-red-100 rounded p-2 font-mono text-xs break-all" dir="ltr">${data.details.message}</p></div>`;
+                }
+                if (data.details.type) {
+                    const labels = {
+                        'connection_error': '🔌 خطای اتصال به سرور مقصد',
+                        'network_error': '🌐 خطای شبکه',
+                        'timeout_error': '⏱️ پایان مهلت اتصال (Timeout)',
+                        'dns_error': '🔍 دامنه پیدا نشد',
+                        'ssl_error': '🔒 خطای SSL',
+                        'unknown_error': '❓ خطای ناشناخته',
+                    };
+                    html += `<div class="mt-2 text-sm"><span class="text-gray-600">نوع خطا:</span> <span class="font-semibold text-red-700">${labels[data.details.type] || data.details.type}</span></div>`;
+                }
+            }
+
+            detailsDiv.innerHTML = html;
+            document.getElementById('linkTesterError').classList.remove('hidden');
+        }
+
+        // Close with Escape
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                closeLinkTesterModal();
+            }
+        });
+    </script>
+@endpush
