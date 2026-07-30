@@ -537,7 +537,6 @@
     </div>
 @endsection
 
-@stack('scripts')
 @push('scripts')
     <script>
         /**

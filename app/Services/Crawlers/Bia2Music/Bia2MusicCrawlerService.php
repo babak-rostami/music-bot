@@ -432,6 +432,9 @@ class Bia2MusicCrawlerService
             ->where('title', $data->title)
             ->where('artist_name', $data->artistName)
             ->first();
+        if (!$song) {
+            $song = Song::where('source_url', $data->sourceUrl)->first();
+        }
 
         if (!$song) {
             $song = Song::query()->create([

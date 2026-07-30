@@ -139,11 +139,11 @@ class ProcessMusicDownloadJob implements ShouldQueue
 
             $originalFile = $result['path'];
             $quality      = $result['quality'];
-            
+
             $fileIdColumn = "telegram_file_id_{$quality}";
             $fileName = $this->generateFileName($song);
-            $cleanFile = $this->addMetadata($originalFile, $tempDirectory, $fileName);            
-            
+            $cleanFile = $this->addMetadata($originalFile, $tempDirectory, $fileName, $song->title);
+
             // آپلود به کانال Cache telegram
             $cacheResult = $telegram->uploadAudioToCacheChannel($cleanFile, $song);
 

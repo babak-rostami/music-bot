@@ -8,12 +8,40 @@ use App\Models\Artist;
 use App\Models\Song;
 use App\Models\SongDownloadLink;
 use App\Services\ArtistResolver;
+use App\Services\ImageUploadService;
 use Babak\Elasticsearch\Facades\Elasticsearch;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Throwable;
 
 class SongController extends Controller
 {
+    public function __construct(
+        private readonly ImageUploadService $images,
+    ) {}
+
+    /**
+     * تنظیمات پردازش کاور — یک‌جا تعریف شده تا store و update دقیقاً یکسان باشند.
+     *
+     * @param  string  $filename  نام فایل بدون پسوند (اسلاگ آهنگ)
+     * @return array<string,mixed>
+     */
+    private function coverOptions(string $filename): array
+    {
+        return [
+            'width'        => 300,        // عرض ۳۰۰ پیکسل، ارتفاع خودکار
+            'format'       => 'webp',     // تبدیل به webp
+            'quality'      => 85,
+            'crop'         => false,      // بدون برش، نسبت تصویر حفظ می‌شود
+            'date_folders' => true,      // 👈 بدون زیرپوشه Y/m — مستقیم در music
+            'filename'     => $filename,  // 👈 نام بر اساس اسلاگ آهنگ
+        ];
+    }
+
+    /** پوشه‌ی مقصد روی دیسک. */
+    private const COVER_DIRECTORY = '';
+
     public function index(Request $request)
     {
         // ۱. بررسی اینکه آیا شناسه خواننده (artist_id) در درخواست وجود دارد یا خیر
@@ -61,7 +89,7 @@ class SongController extends Controller
         return view('admin.songs.create');
     }
 
-    public function store(Request $request)
+    public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'title'                => ['required', 'string', 'max:255'],
@@ -71,24 +99,59 @@ class SongController extends Controller
             'downloads_count'      => ['nullable', 'integer', 'min:0'],
             'telegram_file_id_128' => ['nullable', 'string', 'max:255'],
             'telegram_file_id_320' => ['nullable', 'string', 'max:255'],
-            'download_link_128'    => ['nullable', 'url', 'max:500'],
-            'download_link_320'    => ['nullable', 'url', 'max:500'],
+            'download_link_128'    => ['nullable', 'max:500'],
+            'download_link_320'    => ['nullable', 'max:500'],
             'aparat_link'          => ['nullable'],
+            'cover'                => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'show_in_saz_site' => ['nullable'],
+            'description' => ['nullable']
         ]);
 
-        $slugSource = $validated['title'] . ' ' . $validated['artist_name'];
-        $validated['slug'] = SongSlugHelper::make($slugSource);
+        // اسلاگ را قبل از آپلود می‌سازیم، چون نام فایل کاور از روی آن ساخته می‌شود
+        $slug = SongSlugHelper::make($validated['title'] . ' ' . $validated['artist_name']);
 
-        $song = Song::create($validated);
+        $downloadLink128 = $validated['download_link_128'] ?? null;
+        $downloadLink320 = $validated['download_link_320'] ?? null;
+
+        unset(
+            $validated['cover']
+        );
+
+        $validated['slug'] = $slug;
+
+        // آپلود کاور
+        $coverPath = null;
+
+        if ($request->hasFile('cover')) {
+            // خروجی: music/shadmehr-aghili-dadad.webp
+            $coverPath = $this->images->upload(
+                $request->file('cover'),
+                self::COVER_DIRECTORY,
+                $this->coverOptions($slug)
+            );
+
+            $validated['cover_path'] = $coverPath;
+        }
+
+        try {
+            $song = Song::create($validated);
+        } catch (Throwable $e) {
+            // اگر ذخیره در دیتابیس شکست خورد، فایل یتیم روی FTP باقی نماند
+            $this->images->delete($coverPath);
+
+            throw $e;
+        }
 
         Elasticsearch::sync($song);
         ArtistResolver::attachSingleArtist($song);
 
-        $domain = $this->getSiteDomain($validated['source_url']);
-        $this->storeDownloadLink($song, '128', $domain, $validated['download_link_128']);
-        $this->storeDownloadLink($song, '320', $domain, $validated['download_link_320']);
+        $domain = $this->getSiteDomain($song->source_url);
+        $this->storeDownloadLink($song, '128', $domain, $downloadLink128);
+        $this->storeDownloadLink($song, '320', $domain, $downloadLink320);
 
-        return redirect()->route('admin.songs.index')->with('success', 'آهنگ با موفقیت ایجاد شد.');
+        return redirect()
+            ->route('admin.songs.index')
+            ->with('success', 'آهنگ با موفقیت ایجاد شد.');
     }
 
     private function storeDownloadLink(Song $song, string $quality, $provider, ?string $downloadUrl): void
@@ -119,7 +182,7 @@ class SongController extends Controller
         return view('admin.songs.edit', compact('song'));
     }
 
-    public function update(Request $request, Song $song)
+    public function update(Request $request, Song $song): RedirectResponse
     {
         $validated = $request->validate([
             'title'                => ['required', 'string', 'max:255'],
@@ -129,10 +192,34 @@ class SongController extends Controller
             'downloads_count'      => ['nullable', 'integer', 'min:0'],
             'telegram_file_id_128' => ['nullable', 'string', 'max:255'],
             'telegram_file_id_320' => ['nullable', 'string', 'max:255'],
-            'download_link_128'    => ['nullable', 'url', 'max:500'],
-            'download_link_320'    => ['nullable', 'url', 'max:500'],
+            'bale_file_id_128'     => ['nullable', 'string', 'max:255'],
+            'bale_file_id_320'     => ['nullable', 'string', 'max:255'],
+            'download_link_128'    => ['nullable', 'max:500'],
+            'download_link_320'    => ['nullable', 'max:500'],
             'aparat_link'          => ['nullable'],
+            'cover'                => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+            'show_in_saz_site' => ['nullable'],
+            'description' => ['nullable']
         ]);
+
+        $downloadLink128 = $validated['download_link_128'] ?? null;
+        $downloadLink320 = $validated['download_link_320'] ?? null;
+
+        unset(
+            $validated['cover']
+        );
+
+        // --- کاور ---
+        if ($request->hasFile('cover')) {
+            $oldCoverPath = $song->cover_path;
+
+            $validated['cover_path'] = $this->images->replace(
+                $request->file('cover'),
+                $oldCoverPath,              // اگر پر باشد، دقیقاً همین مسیر بازنویسی می‌شود
+                self::COVER_DIRECTORY,
+                $this->coverOptions($song->slug)
+            );
+        }
 
         $song->update($validated);
 
@@ -145,16 +232,21 @@ class SongController extends Controller
             Elasticsearch::update($song, $changes);
         }
 
-        $domain = $this->getSiteDomain($validated['source_url']);
-        $this->storeDownloadLink($song, '128', $domain, $validated['download_link_128']);
-        $this->storeDownloadLink($song, '320', $domain, $validated['download_link_320']);
+        if (! empty($song->source_url)) {
+            $domain = $this->getSiteDomain($song->source_url);
+            $this->storeDownloadLink($song, '128', $domain, $downloadLink128);
+            $this->storeDownloadLink($song, '320', $domain, $downloadLink320);
+        }
 
-
-        return redirect()->route('admin.songs.index')->with('success', 'آهنگ با موفقیت بروزرسانی شد.');
+        return redirect()
+            ->route('admin.songs.index')
+            ->with('success', 'آهنگ با موفقیت بروزرسانی شد.');
     }
 
     public function destroy(Song $song)
     {
+        $this->images->delete($song->cover_path);
+
         $song->delete();
         Elasticsearch::delete($song);
 

@@ -13,13 +13,71 @@
     </a>
 @endsection
 
+@push('styles')
+    <style>
+        /**
+                                                                             * استایل‌های کمکی آپلودر کاور
+                                                                             */
+
+        [data-cover-uploader] [data-cover-dropzone] {
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        /* حالت درگ */
+        [data-cover-uploader] [data-cover-dropzone].is-dragging {
+            box-shadow: 0 0 0 4px rgb(99 102 241 / 0.15);
+        }
+
+        /* شطرنجی پشت عکس‌های PNG شفاف */
+        [data-cover-uploader] [data-cover-preview-image] {
+            background-color: #fff;
+            background-image:
+                linear-gradient(45deg, #f1f5f9 25%, transparent 25%),
+                linear-gradient(-45deg, #f1f5f9 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #f1f5f9 75%),
+                linear-gradient(-45deg, transparent 75%, #f1f5f9 75%);
+            background-size: 12px 12px;
+            background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+        }
+
+        /* انیمیشن ورود پیش‌نمایش */
+        [data-cover-uploader] [data-cover-preview]:not(.hidden) {
+            animation: cover-fade-in .18s ease-out both;
+        }
+
+        @keyframes cover-fade-in {
+            from {
+                opacity: 0;
+                transform: translateY(4px);
+            }
+
+            to {
+                opacity: 1;
+                transform: none;
+            }
+        }
+
+        /* فایل اینپوت مخفی ولی قابل فوکوس */
+        [data-cover-uploader] input[type="file"]:focus-visible+svg {
+            outline: 2px solid #6366f1;
+            outline-offset: 4px;
+            border-radius: 6px;
+        }
+    </style>
+@endpush
+
 @section('content')
 
     <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
 
-        <form method="POST" action="{{ route('admin.songs.update', $song) }}">
+        <form method="POST" action="{{ route('admin.songs.update', $song) }}" enctype="multipart/form-data">
             @csrf
             @method('PUT')
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                @include('admin.songs.partials.cover-edit')
+            </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -63,6 +121,24 @@
                     </div>
 
                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1.5">توی سایت نشون بده؟</label>
+                        <select
+                            class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none transition"
+                            name="show_in_saz_site">
+                            <option value="1" {{ old('show_in_saz_site', $song->show_in_saz_site) == 1 ? 'selected' : '' }}>آره
+                            </option>
+                            <option value="0" {{ old('show_in_saz_site', $song->show_in_saz_site) == 0 ? 'selected' : '' }}>نه
+                            </option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1.5">متن معرفی</label>
+                        <textarea name="description" rows="6" placeholder="این از اون آهنگ هاست که میره توی پلی لیست..."
+                            class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none resize-none transition">{{ old('description', $song->description) }}</textarea>
+                    </div>
+
+                    <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1.5">تعداد دانلود</label>
                         <input type="number" name="downloads_count"
                             value="{{ old('downloads_count', $song->downloads_count) }}" min="0"
@@ -90,16 +166,16 @@
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1.5">لینک دانلود ۱۲۸kbps</label>
-                            <input type="url" name="download_link_128"
-                                value="{{ old('download_link_128', $song->download_link_128) }}" dir="ltr"
+                            <input name="download_link_128" value="{{ old('download_link_128', $song->download_link_128) }}"
+                                dir="ltr"
                                 class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition {{ $errors->has('download_link_128') ? 'border-red-500' : '' }}">
                             @error('download_link_128') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                         </div>
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1.5">لینک دانلود ۳۲۰kbps</label>
-                            <input type="url" name="download_link_320"
-                                value="{{ old('download_link_320', $song->download_link_320) }}" dir="ltr"
+                            <input name="download_link_320" value="{{ old('download_link_320', $song->download_link_320) }}"
+                                dir="ltr"
                                 class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition {{ $errors->has('download_link_320') ? 'border-red-500' : '' }}">
                             @error('download_link_320') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                         </div>
@@ -171,3 +247,162 @@
     </div>
 
 @endsection
+
+@push('scripts')
+    <script>
+        /**
+     * Cover Uploader
+     */
+        (function () {
+            'use strict';
+
+            const HUMAN = (bytes) => {
+                if (!bytes && bytes !== 0) return '';
+                const units = ['B', 'KB', 'MB', 'GB'];
+                let i = 0;
+                let n = bytes;
+                while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+                return `${n.toFixed(n >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+            };
+
+            function initUploader(root) {
+                const input = root.querySelector('[data-cover-input]');
+                const dropzone = root.querySelector('[data-cover-dropzone]');
+                const preview = root.querySelector('[data-cover-preview]');
+                const image = root.querySelector('[data-cover-preview-image]');
+                const nameEl = root.querySelector('[data-cover-name]');
+                const sizeEl = root.querySelector('[data-cover-size]');
+                const removeBtn = root.querySelector('[data-cover-remove]');
+                const changeBtn = root.querySelector('[data-cover-change]');
+                const errorEl = root.querySelector('[data-cover-error]');
+
+                if (!input || !dropzone) return;
+
+                const maxSizeKb = parseInt(root.dataset.maxSize || '4096', 10);
+                const accepted = (root.dataset.accept || 'image/jpeg,image/png,image/webp').split(',').map(s => s.trim());
+                const initialUrl = root.dataset.initialImage || '';
+                const initialName = root.dataset.initialName || '';
+                const hasInitial = initialUrl.length > 0;
+
+                let objectUrl = null;
+
+                const showError = (msg) => {
+                    if (!errorEl) return;
+                    errorEl.textContent = msg;
+                    errorEl.classList.remove('hidden');
+                };
+
+                const clearError = () => errorEl && errorEl.classList.add('hidden');
+
+                const revoke = () => {
+                    if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
+                };
+
+                /** برگشت به حالت اولیه (create: خالی / edit: کاور فعلی) */
+                const reset = () => {
+                    revoke();
+                    input.value = '';
+                    clearError();
+
+                    if (hasInitial) {
+                        image.src = initialUrl;
+                        nameEl.textContent = initialName;
+                        sizeEl.textContent = 'کاور فعلی';
+                        preview.classList.remove('hidden');
+                        dropzone.classList.add('hidden');
+                        changeBtn && changeBtn.classList.remove('hidden');
+                        removeBtn && removeBtn.classList.add('hidden');
+                    } else {
+                        image.src = '';
+                        nameEl.textContent = '';
+                        sizeEl.textContent = '';
+                        preview.classList.add('hidden');
+                        dropzone.classList.remove('hidden');
+                        removeBtn && removeBtn.classList.remove('hidden');
+                    }
+                };
+
+                const validate = (file) => {
+                    if (accepted.length && !accepted.includes(file.type)) {
+                        return 'فرمت فایل مجاز نیست. فقط JPG، PNG یا WEBP.';
+                    }
+                    if (file.size > maxSizeKb * 1024) {
+                        return `حجم فایل بیشتر از حد مجاز است (حداکثر ${HUMAN(maxSizeKb * 1024)}).`;
+                    }
+                    return null;
+                };
+
+                const applyFile = (file) => {
+                    const err = validate(file);
+                    if (err) { showError(err); reset(); return; }
+
+                    clearError();
+                    revoke();
+                    objectUrl = URL.createObjectURL(file);
+
+                    image.src = objectUrl;
+                    nameEl.textContent = file.name;
+                    sizeEl.textContent = HUMAN(file.size) + ' — عکس جدید';
+
+                    preview.classList.remove('hidden');
+                    dropzone.classList.add('hidden');
+                    changeBtn && changeBtn.classList.remove('hidden');
+                    removeBtn && removeBtn.classList.remove('hidden');
+                };
+
+                input.addEventListener('change', () => {
+                    if (input.files && input.files[0]) applyFile(input.files[0]);
+                    else reset();
+                });
+
+                // drag & drop
+                ['dragenter', 'dragover'].forEach(evt =>
+                    dropzone.addEventListener(evt, (e) => {
+                        e.preventDefault();
+                        dropzone.classList.add('is-dragging', 'border-indigo-500', 'bg-indigo-50');
+                    })
+                );
+
+                ['dragleave', 'drop'].forEach(evt =>
+                    dropzone.addEventListener(evt, (e) => {
+                        e.preventDefault();
+                        dropzone.classList.remove('is-dragging', 'border-indigo-500', 'bg-indigo-50');
+                    })
+                );
+
+                dropzone.addEventListener('drop', (e) => {
+                    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+                    if (!file) return;
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    input.files = dt.files;      // تا با submit فرم ارسال بشه
+                    applyFile(file);
+                });
+
+                removeBtn && removeBtn.addEventListener('click', reset);
+
+                changeBtn && changeBtn.addEventListener('click', () => {
+                    input.click();
+                });
+
+                // paste (Ctrl+V) روی همین باکس
+                root.addEventListener('paste', (e) => {
+                    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+                    if (!item) return;
+                    const file = item.getAsFile();
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    input.files = dt.files;
+                    applyFile(file);
+                });
+
+                window.addEventListener('beforeunload', revoke);
+            }
+
+            document.addEventListener('DOMContentLoaded', () => {
+                document.querySelectorAll('[data-cover-uploader]').forEach(initUploader);
+            });
+        })();
+
+    </script>
+@endpush

@@ -141,7 +141,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
 
             $fileIdColumn = "bale_file_id_{$quality}";
             $fileName = $this->generateFileName($song);
-            $cleanFile = $this->addMetadata($originalFile, $tempDirectory, $fileName);
+            $cleanFile = $this->addMetadata($originalFile, $tempDirectory, $fileName, $song->title);
 
             // آپلود به کانال Cache بله
             $cacheResult = $bale->uploadAudioToCacheChannel($cleanFile, $song);

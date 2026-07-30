@@ -67,6 +67,11 @@ class BaleActionService
                 return;
             }
 
+            if ($this->isInstaUrl($message)) {
+                $this->handleInstaUrl($message);
+                return;
+            }
+
             // ۲. اگر مدیا نبود، متن را پردازش کن
             $this->messageProcessor->process($message);
             return;
@@ -80,6 +85,39 @@ class BaleActionService
         if ($newMessageId) {
             $this->rememberLastJoinMessage($userId, $newMessageId);
         }
+    }
+
+    private function isInstaUrl(array $message): bool
+    {
+        $text = $this->getMessageText($message);
+
+        if ($text === '') {
+            return false;
+        }
+
+        return preg_match(
+            '~(?:https?:\/\/)?(?:www\.)?(?:m\.)?(?:instagram\.com|instagr\.am)\/[^\s]+~iu',
+            $text
+        ) === 1;
+    }
+
+    private function handleInstaUrl(array $message): void
+    {
+        $chatId = $message['chat']['id'];
+
+        $this->baleService->sendMessage(
+            $chatId,
+            'یک تیکه از متن آهنگ رو بفرست...'
+        );
+    }
+
+    private function getMessageText(array $message): string
+    {
+        return trim(
+            $message['text']
+                ?? $message['caption']
+                ?? ''
+        );
     }
 
     /**
@@ -105,7 +143,7 @@ class BaleActionService
 
         // کپی پیام به کانال کش بله (یا از forwardBaleMessage استفاده کنید)
         $this->baleService->forwardMessage($chatId, $messageId);
-        $this->baleService->sendMessage($chatId, 'درخواست با موفقیت در صف دانلود قرار گرفت...');
+        $this->baleService->sendMessage($chatId, 'یک تیکه از متن آهنگ رو بفرست...');
     }
 
     // ─────────────────────────────────────────────────

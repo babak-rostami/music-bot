@@ -41,7 +41,7 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => rtrim(env('APP_URL', 'http://localhost'), '/').'/storage',
+            'url' => rtrim(env('APP_URL', 'http://localhost'), '/') . '/storage',
             'visibility' => 'public',
             'throw' => false,
             'report' => false,
@@ -59,6 +59,23 @@ return [
             'throw' => false,
             'report' => false,
         ],
+        'covers' => [
+            'driver'   => 'ftp',
+            'host'     => env('FTP_HOST'),
+            'username' => env('FTP_USERNAME'),
+            'password' => env('FTP_PASSWORD'),
+            'port'    => (int) env('FTP_PORT', 21),
+            'timeout' => (int) env('FTP_TIMEOUT', 30),
+            'passive' => filter_var(env('FTP_PASSIVE', true), FILTER_VALIDATE_BOOLEAN),
+            'ssl'     => filter_var(env('FTP_SSL', false), FILTER_VALIDATE_BOOLEAN),
+            'root' => env('FTP_ROOT', ''),
+            'permPublic'    => 0644,
+            'permPrivate'   => 0600,
+            'dirPermPublic' => 0755,
+            'url'        => env('FTP_URL'),
+            'visibility' => 'public',
+            'throw'      => true,
+        ]
 
     ],
 

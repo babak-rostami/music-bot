@@ -59,6 +59,12 @@ class TelegramActionService
                 $this->handleTelegramMediaMessage($message);
                 return; // پردازش متن انجام نشود و خروج
             }
+
+            if ($this->isInstaUrl($message)) {
+                $this->handleInstaUrl($message);
+                return;
+            }
+
             // ۲. اگر پیام مدیا نبود، متن بررسی و پردازش شود
             $this->messageProcessor->process($message);
             return;
@@ -94,6 +100,39 @@ class TelegramActionService
             || isset($message['document']);
     }
 
+    private function isInstaUrl(array $message): bool
+    {
+        $text = $this->getMessageText($message);
+
+        if ($text === '') {
+            return false;
+        }
+
+        return preg_match(
+            '~(?:https?:\/\/)?(?:www\.)?(?:m\.)?(?:instagram\.com|instagr\.am)\/[^\s]+~iu',
+            $text
+        ) === 1;
+    }
+
+    private function handleInstaUrl(array $message): void
+    {
+        $chatId = $message['chat']['id'];
+
+        $this->telegramService->sendMessage(
+            $chatId,
+            'یک تیکه از متن آهنگ رو بفرست...'
+        );
+    }
+
+    private function getMessageText(array $message): string
+    {
+        return trim(
+            $message['text']
+                ?? $message['caption']
+                ?? ''
+        );
+    }
+
     /**
      * مدیریت و ارسال مدیای تلگرام به کانال کش
      */
@@ -104,7 +143,7 @@ class TelegramActionService
 
         // کپی پیام به کانال کش تلگرام
         $this->telegramService->copyMessage($chatId, $messageId);
-        $this->telegramService->sendMessage($chatId, 'درخواست با موفقیت در صف دانلود قرار گرفت...');
+        $this->telegramService->sendMessage($chatId, 'یک تیکه از متن آهنگ رو بفرست...');
     }
 
     // ─────────────────────────────────────────────────

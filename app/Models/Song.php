@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Babak\Elasticsearch\Traits\ElasticsearchableTrait;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -23,7 +24,9 @@ class Song extends Model
         'download_link_128',
         'download_link_320',
         'aparat_link',
-        'cover_path'
+        'cover_path',
+        'show_in_saz_site',
+        'description',
     ];
 
     protected function casts(): array
@@ -82,5 +85,21 @@ class Song extends Model
     public function downloadLinks(): HasMany
     {
         return $this->hasMany(SongDownloadLink::class);
+    }
+
+    /**
+     * URL کامل کاور — در ویو فقط بنویس: {{ $song->cover_url }}
+     */
+    protected function coverUrl(): Attribute
+    {
+        return Attribute::get(function (): ?string {
+            if (! $this->cover_path) {
+                return asset('images/default-cover.webp');
+            }
+
+            $base = config('filesystems.disks.' . config('images.disk') . '.url');
+
+            return rtrim((string) $base, '/') . '/' . ltrim($this->cover_path, '/');
+        });
     }
 }

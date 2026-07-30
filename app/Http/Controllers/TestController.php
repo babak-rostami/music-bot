@@ -12,7 +12,5 @@ class TestController extends Controller
 {
     public function index()
     {
-        $song = Song::find(39748);
-        dd($song->downloadLinks);
     }
 }
