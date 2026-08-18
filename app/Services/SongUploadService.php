@@ -54,9 +54,7 @@ class SongUploadService
             if ($response->successful()) {
                 $song->increment('downloads_count');
 
-                if ($song->lyrics) {
-                    $telegramService->sendMessage($chatId, "🎤 متن آهنگ:\n\n" . $song->lyrics);
-                }
+                $this->sendLyrics($telegramService, $chatId, $song);
 
                 $telegramService->deleteMessage($chatId, $messageId);
 
@@ -142,9 +140,7 @@ class SongUploadService
             );
 
             if ($response->successful()) {
-                if ($song->lyrics) {
-                    $baleService->sendMessage($chatId, "🎤 متن آهنگ:\n\n" . $song->lyrics);
-                }
+                $this->sendLyrics($baleService, $chatId, $song);
 
                 $baleService->deleteMessage($chatId, $messageId);
 
@@ -188,6 +184,34 @@ class SongUploadService
             $lockKey,
         )->onQueue('download-music');
     }
+
+    private function sendLyrics($service, $chatId, Song $song)
+    {
+        if ($song->lyrics) {
+            $lines = explode("\n", $song->lyrics);
+            $inlineKeyboard = null;
+            $displayText = $song->lyrics;
+
+            if (count($lines) > 3) {
+                $displayText = implode("\n", array_slice($lines, 0, 3)) . "\n...";
+
+                $baseUrl = $song->show_in_saz_site == 1 ? "https://saz.becharkh.com/songs/" : "https://music.becharkh.com/songs/";
+                $url = $baseUrl . $song->slug;
+
+                $inlineKeyboard = [
+                    [
+                        [
+                            'text' => 'مشاهده متن کامل آهنگ',
+                            'url'  => $url
+                        ]
+                    ]
+                ];
+            }
+
+            $service->sendMessage($chatId, "🎤 متن آهنگ:\n\n" . $displayText, $inlineKeyboard);
+        }
+    }
+
 
     /**
      * بهترین لینک آهنگ رو پیدا کن و ارسال کن برای تلگرام

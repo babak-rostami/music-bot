@@ -55,24 +55,23 @@ class BaleActionService
             Log::warning('Failed to register/notify bale user', ['error' => $e->getMessage()]);
         }
 
+        if ($this->isMediaMessage($message)) {
+            $this->handleMediaMessage($message);
+            return;
+        }
+
+        if ($this->isInstaUrl($message)) {
+            $this->handleInstaUrl($message);
+            return;
+        }
+
         $missing = $this->membershipService->getMissingChannels($userId);
 
         if (empty($missing)) {
             $this->forgetPendingMessage($userId);
             $this->forgetLastJoinMessage($userId);
 
-            // ۱. اگر پیام مدیا بود، فوروارد/کپی کن و خارج شو (متن پردازش نشود)
-            if ($this->isMediaMessage($message)) {
-                $this->handleMediaMessage($message);
-                return;
-            }
-
-            if ($this->isInstaUrl($message)) {
-                $this->handleInstaUrl($message);
-                return;
-            }
-
-            // ۲. اگر مدیا نبود، متن را پردازش کن
+            //پردازش متن کاربر
             $this->messageProcessor->process($message);
             return;
         }
@@ -104,10 +103,24 @@ class BaleActionService
     private function handleInstaUrl(array $message): void
     {
         $chatId = $message['chat']['id'];
-
         $this->baleService->sendMessage(
             $chatId,
-            'یک تیکه از متن آهنگ رو بفرست...'
+            "🎵 پست اینستاگرام فرستادی؟\n\n"
+                . "چند ثانیه‌ای آهنگش رو برات پیدا می‌کنم 🔎\n"
+                . "فقط فایل رو توی بات تلگرام برام بفرست:\n\n"
+                . "پیشرفته ترین ربات جستجوی آهنگ در تلگرام 🫡⚡️\n"
+                . "❌یکی از موارد رو بفرست آهنگ تحویل بگیر❌\n"
+                . "🔤 متن آهنگ\n"
+                . "🎙 صوت\n"
+                . "📹 ویدیو\n"
+                . "🔊 ضبط صدا\n"
+                . "🎥 لینک یوتیوب، اینستاگرام، تیک تاک و …\n\n"
+                . "👉 https://t.me/music_yab_jangi_bot \n"
+                . "اگه لینک بالا کار نکرد توی تلگرام جستجو کن👇"
+        );
+        $this->baleService->sendMessage(
+            $chatId,
+            "music_yab_jangi_bot"
         );
     }
 
@@ -143,7 +156,25 @@ class BaleActionService
 
         // کپی پیام به کانال کش بله (یا از forwardBaleMessage استفاده کنید)
         $this->baleService->forwardMessage($chatId, $messageId);
-        $this->baleService->sendMessage($chatId, 'یک تیکه از متن آهنگ رو بفرست...');
+        $this->baleService->sendMessage(
+            $chatId,
+            "🎵 فایل فرستادی؟\n\n"
+                . "چند ثانیه‌ای آهنگش رو برات پیدا می‌کنم 🔎\n"
+                . "فقط فایل رو توی بات تلگرام برام بفرست:\n\n"
+                . "پیشرفته ترین ربات جستجوی آهنگ در تلگرام 🫡⚡️\n"
+                . "❌یکی از موارد رو بفرست آهنگ تحویل بگیر❌\n"
+                . "🔤 متن آهنگ\n"
+                . "🎙 صوت\n"
+                . "📹 ویدیو\n"
+                . "🔊 ضبط صدا\n"
+                . "🎥 لینک یوتیوب، اینستاگرام، تیک تاک و …\n\n"
+                . "👉 https://t.me/music_yab_jangi_bot \n"
+                . "اگه لینک بالا کار نکرد توی تلگرام جستجو کن👇"
+        );
+        $this->baleService->sendMessage(
+            $chatId,
+            "music_yab_jangi_bot"
+        );
     }
 
     // ─────────────────────────────────────────────────
@@ -312,9 +343,28 @@ class BaleActionService
                 $messageId,
                 "✅ درخواست شما ثبت شد!\n\n"
                     . "🎵 آهنگ در لیست جستجو قرار گرفت\n\n"
-                    . "⏰ تا چند ساعت آینده برات آپلود میشه.\n\n"
                     . "💎 وقتی آماده شد، همینجا خبرت می‌کنم!",
                 []
+            );
+
+            $this->baleService->sendMessage(
+                $chatId,
+                "🎵 میخوای همین الان آهنگ رو بفرستم؟\n"
+                    . "از ربات تلگرام استفاده کن\n\n"
+
+                    . "پیشرفته ترین ربات جستجوی آهنگ در تلگرام 🫡⚡️\n"
+                    . "❌یکی از موارد رو بفرست آهنگ تحویل بگیر❌\n"
+                    . "🔤 متن آهنگ\n"
+                    . "🎙 صوت\n"
+                    . "📹 ویدیو\n"
+                    . "🔊 ضبط صدا\n"
+                    . "🎥 لینک یوتیوب، اینستاگرام، تیک تاک و …\n\n"
+                    . "👉 https://t.me/music_yab_jangi_bot \n"
+                    . "اگه لینک بالا کار نکرد توی تلگرام جستجو کن👇"
+            );
+            $this->baleService->sendMessage(
+                $chatId,
+                "music_yab_jangi_bot"
             );
 
             $this->baleService->answerCallbackQuery($callbackQueryId, '✅ درخواست ثبت شد!');

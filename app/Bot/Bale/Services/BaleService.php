@@ -12,11 +12,13 @@ use Illuminate\Support\Facades\Log;
 class BaleService
 {
     protected string $apiUrl;
+    private string $caption;
 
     public function __construct()
     {
         // ✅ تصحیح شد: tapi.bale.ai (نه api.bale.ai/v1/bots/)
         $this->apiUrl = 'https://tapi.bale.ai/bot' . config('telegram.bale_bot_token');
+        $this->caption = "ربات آهنگ یاب : @download_music_bot";
     }
 
     /**
@@ -101,6 +103,7 @@ class BaleService
                 'chat_id'   => (string) $chatId,
                 'title'     => $title,
                 'performer' => $performer,
+                'caption'   => $this->caption,
             ]);
     }
 
@@ -125,6 +128,7 @@ class BaleService
             'audio'     => $fileId,
             'title'     => $title,
             'performer' => $performer,
+            'caption'   => $this->caption,
         ]);
     }
 
@@ -144,6 +148,7 @@ class BaleService
                 'chat_id'   => (string) $cacheChannelId,
                 'title'     => $song->title,
                 'performer' => $song->artist_name,
+                'caption'   => $this->caption,
             ]);
 
         if (!$response->successful()) {

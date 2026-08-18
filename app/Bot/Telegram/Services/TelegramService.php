@@ -8,10 +8,13 @@ use Illuminate\Support\Facades\Log;
 class TelegramService
 {
     protected string $apiUrl;
+    private string $caption;
+
 
     public function __construct()
     {
         $this->apiUrl = 'https://api.telegram.org/bot' . config('telegram.bot_token');
+        $this->caption = "ربات آهنگ یاب : @download_music_jangi_bot";
     }
 
     /**
@@ -82,7 +85,6 @@ class TelegramService
             'message_id' => $messageId,
         ]);
     }
-
     public function sendAudio(int|string $chatId, string $filePath, string $fileName, string $title, string $performer)
     {
         return Http::attach('audio', fopen($filePath, 'r'), $fileName)
@@ -90,6 +92,7 @@ class TelegramService
                 'chat_id'   => $chatId,
                 'title'     => $title,
                 'performer' => $performer,
+                'caption'   => $this->caption,
             ]);
     }
 
@@ -108,6 +111,7 @@ class TelegramService
             'audio'     => $fileId,
             'title'     => $title,
             'performer' => $performer,
+            'caption'   => $this->caption,
         ]);
     }
 
@@ -127,6 +131,7 @@ class TelegramService
                 'chat_id'   => $cacheChannelId,
                 'title'     => $song->title,
                 'performer' => $song->artist_name,
+                'caption'   => $this->caption,
             ]);
 
         if (!$response->successful()) {

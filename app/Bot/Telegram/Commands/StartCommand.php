@@ -5,6 +5,7 @@ namespace App\Bot\Telegram\Commands;
 use App\Bot\Telegram\Actions\ShowDownloadOptionsAction;
 use App\Bot\Telegram\Contracts\CommandHandlerInterface;
 use App\Bot\Telegram\Services\TelegramService;
+use App\Jobs\ProcessMusicDownloadJob;
 
 class StartCommand implements CommandHandlerInterface
 {
@@ -68,7 +69,8 @@ class StartCommand implements CommandHandlerInterface
         if (preg_match('/^dl_(\d+)$/', $payload, $matches)) {
             $songId = (int) $matches[1];
 
-            $this->showDownloadOptionsAction->sendToChat($chatId, $songId);
+            ProcessMusicDownloadJob::dispatch($songId, $chatId)
+                ->onQueue('download-music');
 
             return true;
         }

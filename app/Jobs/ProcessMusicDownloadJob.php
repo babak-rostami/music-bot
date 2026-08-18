@@ -84,9 +84,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
             if ($response->successful()) {
                 $song->increment('downloads_count');
 
-                if ($song->lyrics) {
-                    $telegram->sendMessage($userId, "🎤 متن آهنگ:\n\n" . $song->lyrics);
-                }
+                $this->sendLyrics($telegram, $song);
 
                 if ($this->messageId) {
                     $telegram->deleteMessage($userId, $this->messageId);
@@ -198,6 +196,34 @@ class ProcessMusicDownloadJob implements ShouldQueue
         }
     }
 
+    private function sendLyrics(TelegramService $telegram, Song $song)
+    {
+        if ($song->lyrics) {
+            $lines = explode("\n", $song->lyrics);
+            $inlineKeyboard = null;
+            $displayText = $song->lyrics;
+
+            if (count($lines) > 3) {
+                $displayText = implode("\n", array_slice($lines, 0, 3)) . "\n...";
+
+                $baseUrl = $song->show_in_saz_site == 1 ? "https://saz.becharkh.com/songs/" : "https://music.becharkh.com/songs/";
+                $url = $baseUrl . $song->slug;
+
+                $inlineKeyboard = [
+                    [
+                        [
+                            'text' => 'مشاهده متن کامل آهنگ',
+                            'url'  => $url
+                        ]
+                    ]
+                ];
+            }
+
+            $telegram->sendMessage($this->chatId, "🎤 متن آهنگ:\n\n" . $displayText, $inlineKeyboard);
+        }
+    }
+
+
     private function downloadLinkNotFound(
         TelegramService $telegram,
         NotificationService $notifier,
@@ -228,10 +254,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
         int $userId,
         $quality
     ): void {
-        // ارسال متن آهنگ (اگه داشته باشه) + حذف پیام "در حال آماده‌سازی"
-        if ($song->lyrics) {
-            $telegram->sendMessage($this->chatId, "🎤 متن آهنگ:\n\n" . $song->lyrics);
-        }
+        $this->sendLyrics($telegram, $song);
         if ($this->messageId) {
             $telegram->deleteMessage($this->chatId, $this->messageId);
         }

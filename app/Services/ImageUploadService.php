@@ -99,11 +99,12 @@ class ImageUploadService
     ): string {
         $options = array_merge($this->defaults, $options);
 
-        if ($oldPath && $options['keep_path']) {
+        $isRemotePath = $oldPath && preg_match('/^http:\/\/|^https:\/\//i', $oldPath);
+
+        if ($oldPath && ! $isRemotePath && $options['keep_path']) {
             $oldExtension = $this->normalizeFormat(pathinfo($oldPath, PATHINFO_EXTENSION));
 
             if ($oldExtension !== null) {
-                // فرمت خروجی را به پسوند قبلی قفل می‌کنیم تا مسیر تغییر نکند
                 $options['format'] = $oldExtension;
 
                 $this->put($oldPath, $this->process($file, $options), $options['disk']);
@@ -114,17 +115,18 @@ class ImageUploadService
 
         $newPath = $this->upload($file, $directory, $options);
 
-        if ($oldPath && $oldPath !== $newPath) {
+        if ($oldPath && ! $isRemotePath && $oldPath !== $newPath) {
             $this->delete($oldPath, $options['disk']);
         }
 
         return $newPath;
     }
 
+
     /** حذف یک فایل (بی‌صدا؛ خطا فقط لاگ می‌شود). */
     public function delete(?string $path, ?string $disk = null): bool
     {
-        if (! $path) {
+        if (! $path || Str::startsWith($path, ['http://', 'https://'])) {
             return false;
         }
 

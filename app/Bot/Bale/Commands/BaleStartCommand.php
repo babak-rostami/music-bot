@@ -4,6 +4,7 @@ namespace App\Bot\Bale\Commands;
 
 use App\Bot\Bale\Actions\BaleShowDownloadOptionsAction;
 use App\Bot\Bale\Services\BaleService;
+use App\Jobs\ProcessBaleMusicDownloadJob;
 
 class BaleStartCommand
 {
@@ -64,7 +65,8 @@ class BaleStartCommand
         // لینک سایت: /start dl_123
         if (preg_match('/^dl_(\d+)$/', $payload, $matches)) {
             $songId = (int) $matches[1];
-            $this->showDownloadOptionsAction->sendToChat($chatId, $songId);
+            ProcessBaleMusicDownloadJob::dispatch($songId, $chatId)
+                ->onQueue('download-music');
             return true;
         }
 
