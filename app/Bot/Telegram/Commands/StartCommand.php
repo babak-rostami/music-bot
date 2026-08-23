@@ -69,7 +69,7 @@ class StartCommand implements CommandHandlerInterface
         if (preg_match('/^dl_(\d+)$/', $payload, $matches)) {
             $songId = (int) $matches[1];
 
-            ProcessMusicDownloadJob::dispatch($songId, $chatId)
+            ProcessMusicDownloadJob::dispatch($songId, $chatId, null, null)
                 ->onQueue('download-music');
 
             return true;

@@ -65,7 +65,7 @@ class BaleStartCommand
         // لینک سایت: /start dl_123
         if (preg_match('/^dl_(\d+)$/', $payload, $matches)) {
             $songId = (int) $matches[1];
-            ProcessBaleMusicDownloadJob::dispatch($songId, $chatId)
+            ProcessBaleMusicDownloadJob::dispatch($songId, $chatId, null, null)
                 ->onQueue('download-music');
             return true;
         }
