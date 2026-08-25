@@ -134,7 +134,7 @@ class NotificationService
             return;
         }
 
-        $chatId = config('telegram.admin_chat_id') ?? config('telegram.cache_channel_id');
+        $chatId = config('telegram.admin_chat_id') ?? config('telegram.notify_channel_id');
 
         if (!$chatId) {
             return;

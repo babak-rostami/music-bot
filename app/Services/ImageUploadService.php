@@ -36,10 +36,10 @@ class ImageUploadService
     /** @var array<string,mixed> */
     protected array $defaults = [
         'disk'          => null,     // null => config('images.disk')
-        'width'         => 300,      // عرض نهایی (px) — ارتفاع خودکار
+        'width'         => 400,      // عرض نهایی (px) — ارتفاع خودکار
         'height'        => null,     // اگر همراه width بیاید، داخل کادر جا می‌شود (بدون کراپ)
         'format'        => 'webp',   // webp | jpg | png | null (حفظ فرمت اصلی)
-        'quality'       => 85,       // 1..100 (روی png بی‌اثر است)
+        'quality'       => 90,       // 1..100 (روی png بی‌اثر است)
         'upsize'        => false,    // اجازه بزرگ‌کردن تصویر کوچک‌تر از width
         'crop'          => false,    // true + width + height => برش دقیق (cover)
         'orient'        => true,     // اصلاح چرخش بر اساس EXIF

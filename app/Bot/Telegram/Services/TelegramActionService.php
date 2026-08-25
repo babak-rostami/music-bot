@@ -7,6 +7,7 @@ use App\Bot\NotificationService;
 use App\Bot\Telegram\Actions\RequestSongAction;
 use App\Bot\Telegram\Actions\ShowDownloadOptionsAction;
 use App\Bot\Telegram\MessageProcessor;
+use App\Jobs\ProcessMusicDownloadJob;
 use App\Services\SongUploadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -25,6 +26,7 @@ class TelegramActionService
         protected ShowDownloadOptionsAction $showDownloadOptionsAction,
         protected SongUploadService $songUploadService,
         protected RequestSongAction $requestSongAction,
+        protected TelegramAdminService $adminService,
     ) {}
 
     // ─────────────────────────────────────────────────
@@ -38,26 +40,42 @@ class TelegramActionService
         $userName = $message['from']['first_name'] ?? 'دوست عزیز';
         $chatId   = $message['chat']['id'];
 
-        // ✅ ثبت/به‌روزرسانی کاربر + نوتیفیکیشن «پیام دریافت شد»
         try {
             $this->botUserService->registerFromMessage($message, 'telegram');
-            $this->notifier->messageReceived($message, 'telegram');
+            if (!$this->adminService->isAdmin((int) $userId)) {
+                $this->notifier->messageReceived($message, 'telegram');
+            }
         } catch (\Throwable $e) {
             Log::warning('Failed to register/notify user', ['error' => $e->getMessage()]);
         }
 
-        // کانال‌هایی که هنوز عضو نیست رو بگیر
+        if ($this->adminService->isAdmin((int) $userId)) {
+            if ($this->adminService->hasActiveFlow((int) $userId)) {
+                $this->adminService->handleMessage($message);
+                return;
+            }
+
+            if ($this->adminService->tryStartCommand($message)) {
+                return;
+            }
+        }
+
+        // 🚀 کاربر از سایت اومده (/start dl_123) → بدون چک عضویت، همین الان آهنگ رو بفرست
+        if ($songId = $this->extractDirectDownloadSongId($message)) {
+            ProcessMusicDownloadJob::dispatch($songId, $chatId, null)
+                ->onQueue('download-music');
+            return;
+        }
+
         $missing = $this->membershipService->getMissingChannels($userId);
 
         if (empty($missing)) {
-            // ✅ عضو همه کانال‌ها → کش رو پاک کن و پروسس کن
             $this->forgetPendingMessage($userId);
             $this->forgetLastJoinMessage($userId);
 
-            // ۱. اگر پیام مدیا (عکس، ویدیو، آدیو و...) بود
             if ($this->isMediaMessage($message)) {
                 $this->handleTelegramMediaMessage($message);
-                return; // پردازش متن انجام نشود و خروج
+                return;
             }
 
             if ($this->isInstaUrl($message)) {
@@ -65,25 +83,32 @@ class TelegramActionService
                 return;
             }
 
-            // ۲. اگر پیام مدیا نبود، متن بررسی و پردازش شود
             $this->messageProcessor->process($message);
             return;
         }
 
-        // ❌ هنوز عضو نیست
-        // ۱. پیام اصلیش رو کش کن (برای اجرا بعد از عضو شدن)
         $this->cachePendingMessage($userId, $message);
-
-        // ۲. پیام قبلی "عضو شو" رو پاک کن (اگه وجود داره)
         $this->deleteLastJoinMessage($chatId, $userId);
 
-        // ۳. پیام جدید فقط با کانال‌های عضو نشده بفرست
         $newMessageId = $this->membershipService->sendJoinMessage($chatId, $missing, $userName);
 
         if ($newMessageId) {
             $this->rememberLastJoinMessage($userId, $newMessageId);
         }
-        return;
+    }
+
+    /**
+     * اگه پیام /start dl_<id> باشه (لینک مستقیم از سایت)، آی‌دی آهنگ رو برمی‌گردونه.
+     */
+    private function extractDirectDownloadSongId(array $message): ?int
+    {
+        $text = trim($message['text'] ?? '');
+
+        if (!preg_match('/^\/start(@[A-Za-z0-9_]+)?\s+dl_(\d+)\s*$/u', $text, $matches)) {
+            return null;
+        }
+
+        return (int) $matches[2];
     }
 
 
@@ -120,9 +145,9 @@ class TelegramActionService
 
         $this->telegramService->sendMessage(
             $chatId,
-            "🎵 پست اینستاگرام فرستادی؟\n\n"
-                . "توی صف جستجو قرار گرفت 🔎\n"
-                . "وقتی پیدا شد آهنگ رو همینجا برات ارسال میکنم 🫡⚡️\n"
+            "✅ لینک اینستاگرام با موفقیت ثبت شد\n\n"
+                . "⏰ آهنگ در صف دانلود قرار گرفت.\n\n"
+                . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
         );
     }
 
@@ -167,6 +192,14 @@ class TelegramActionService
         $messageId = $callback['message']['message_id'];
         $data      = $callback['data'];
 
+        if (
+            $this->adminService->isAdmin((int) $userId)
+            && (($callback['data'] ?? '') === 'admin_cancel' || $this->adminService->hasActiveFlow((int) $userId))
+        ) {
+            $this->adminService->handleCallback($callback);
+            return;
+        }
+
         // ۱. دکمه "بررسی عضویت"
         if ($data === 'check_membership') {
             $this->handleMembershipCheck(
@@ -198,9 +231,6 @@ class TelegramActionService
         if (str_starts_with($data, 'song_')) {
             $songId = (int) str_replace('song_', '', $data);
             $this->songUploadService->findBestLinkAndSendForTelegram($callback, $songId, $chatId, $this->telegramService);
-            // $this->showDownloadOptionsAction->execute($callback['id'], $songId, $chatId, $messageId);
-            // } elseif (str_starts_with($data, 'download_music_')) {
-            //     $this->songUploadService->processAndSend($callback, $data, $chatId, $this->telegramService);
         } elseif (str_starts_with($data, 'request_song_')) {
             // 🆕 کاربر روی دکمه "هیچکدوم نبود - ثبت درخواست" زده
             $token = str_replace('request_song_', '', $data);

@@ -69,4 +69,15 @@ return [
     */
     'pending_message_ttl' => env('TELEGRAM_PENDING_MESSAGE_TTL', 10),
 
+
+    'notify_channel_id' => env('TELEGRAM_NOTIFY_CHANNEL_ID'),
+
+    'telegram_admin_id' => env('TELEGRAM_ADMIN_ID'),
+    'bale_admin_id'     => env('BALE_ADMIN_ID'),
+
+    'broadcast_rate_per_second'      => env('TELEGRAM_BROADCAST_RATE', 25),
+    'bale_broadcast_rate_per_second' => env('BALE_BROADCAST_RATE', 20),
+
+    'public_songs_base_url' => env('PUBLIC_SONGS_BASE_URL', 'https://musbot.becharkh.com'),
+
 ];

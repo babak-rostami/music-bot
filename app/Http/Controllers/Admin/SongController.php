@@ -30,9 +30,9 @@ class SongController extends Controller
     private function coverOptions(string $filename): array
     {
         return [
-            'width'        => 300,        // عرض ۳۰۰ پیکسل، ارتفاع خودکار
+            'width'        => 400,        // عرض ۳۰۰ پیکسل، ارتفاع خودکار
             'format'       => 'webp',     // تبدیل به webp
-            'quality'      => 85,
+            'quality'      => 90,
             'crop'         => false,      // بدون برش، نسبت تصویر حفظ می‌شود
             'date_folders' => true,      // 👈 بدون زیرپوشه Y/m — مستقیم در music
             'filename'     => $filename,  // 👈 نام بر اساس اسلاگ آهنگ

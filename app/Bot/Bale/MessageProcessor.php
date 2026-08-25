@@ -10,8 +10,11 @@ class MessageProcessor
 {
     protected array $handlers;
 
-    public function __construct(BaleStartCommand $startCommand, BaleSearchCommand $searchCommand)
-    {
+    public function __construct(
+        BaleStartCommand $startCommand,
+        BaleSearchCommand $searchCommand,
+        protected BaleService $baleService,
+    ) {
         $this->handlers = [
             $startCommand,
             $searchCommand,
@@ -30,6 +33,6 @@ class MessageProcessor
         }
 
         // پاسخ پیش‌فرض
-        (new BaleService())->sendMessage($message['chat']['id'], 'متوجه منظورت نشدم!');
+        $this->baleService->sendMessage($message['chat']['id'], 'متوجه منظورت نشدم!');
     }
 }

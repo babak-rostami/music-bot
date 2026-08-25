@@ -224,4 +224,30 @@ class BaleService
 
         return Http::post($this->apiUrl . '/copyMessage', $payload);
     }
+
+    public function getFile(string $fileId): ?array
+    {
+        $response = Http::post($this->apiUrl . '/getFile', ['file_id' => $fileId]);
+
+        if (!$response->successful()) {
+            Log::warning('Bale getFile failed', ['file_id' => $fileId, 'body' => $response->json('description')]);
+            return null;
+        }
+
+        return $response->json('result');
+    }
+
+    public function downloadFile(string $filePath, string $destination): bool
+    {
+        // ⚠️ الگوی آدرس فایل بله رو دقیق از مستنداتشون چک کن؛ اینجا با همون الگوی api رو کپی کردم (tapi.bale.ai/file/bot<token>/...)
+        $url = 'https://tapi.bale.ai/file/bot' . config('telegram.bale_bot_token') . '/' . $filePath;
+        $stream = fopen($destination, 'w');
+        $response = Http::timeout(120)->withOptions(['sink' => $stream])->get($url);
+
+        if (is_resource($stream)) {
+            fclose($stream);
+        }
+
+        return $response->successful();
+    }
 }

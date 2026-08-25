@@ -14,8 +14,11 @@ class MessageProcessor
      */
     protected array $handlers;
 
-    public function __construct(StartCommand $startCommand, SearchCommand $searchCommand)
-    {
+    public function __construct(
+        StartCommand $startCommand,
+        SearchCommand $searchCommand,
+        protected TelegramService $telegramService,
+    ) {
         // ترتیب هندلرها مهم است. کامندهای خاص باید قبل از کامندهای عمومی بیایند.
         $this->handlers = [
             $startCommand,
@@ -36,6 +39,6 @@ class MessageProcessor
         }
 
         // اختیاری: اگر هیچ هندلری پیدا نشد، یک پاسخ پیش‌فرض بفرست
-        (new TelegramService())->sendMessage($message['chat']['id'], 'متوجه منظورت نشدم!');
+        $this->telegramService->sendMessage($message['chat']['id'], 'متوجه منظورت نشدم!');
     }
 }

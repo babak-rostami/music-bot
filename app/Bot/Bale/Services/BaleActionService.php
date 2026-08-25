@@ -6,6 +6,7 @@ use App\Bot\Bale\Actions\BaleShowDownloadOptionsAction;
 use App\Bot\Bale\MessageProcessor;
 use App\Bot\BotUserService;
 use App\Bot\NotificationService;
+use App\Jobs\ProcessBaleMusicDownloadJob;
 use App\Models\SongRequest;
 use App\Services\AdminNotifier;
 use App\Services\SongUploadService;
@@ -24,6 +25,7 @@ class BaleActionService
         private BaleMembershipService $membershipService,
         private NotificationService $notifier,
         private BotUserService $botUserService,
+        private BaleAdminService $adminService,
     ) {}
 
 
@@ -38,7 +40,6 @@ class BaleActionService
         $chat     = $message['chat'] ?? [];
         $chatType = $chat['type'] ?? 'private';
 
-        // 🔒 نادیده گرفتن پیام‌های کانال و گروه
         if ($chatType !== 'private') {
             return;
         }
@@ -47,12 +48,31 @@ class BaleActionService
         $userName = $message['from']['first_name'] ?? $message['from']['username'] ?? 'دوست عزیز';
         $chatId   = $chat['id'];
 
-        // ✅ ثبت/به‌روزرسانی کاربر + نوتیفیکیشن «پیام دریافت شد»
         try {
             $this->botUserService->registerFromMessage($message, 'bale');
-            $this->notifier->messageReceived($message, 'bale');
+            if (!$this->adminService->isAdmin((int) $userId)) {
+                $this->notifier->messageReceived($message, 'bale');
+            }
         } catch (\Throwable $e) {
             Log::warning('Failed to register/notify bale user', ['error' => $e->getMessage()]);
+        }
+
+        if ($this->adminService->isAdmin((int) $userId)) {
+            if ($this->adminService->hasActiveFlow((int) $userId)) {
+                $this->adminService->handleMessage($message);
+                return;
+            }
+
+            if ($this->adminService->tryStartCommand($message)) {
+                return;
+            }
+        }
+
+        // 🚀 کاربر از سایت اومده (/start dl_123) → بدون چک عضویت، همین الان آهنگ رو بفرست
+        if ($songId = $this->extractDirectDownloadSongId($message)) {
+            ProcessBaleMusicDownloadJob::dispatch($songId, $chatId, null, null)
+                ->onQueue('download-music');
+            return;
         }
 
         if ($this->isMediaMessage($message)) {
@@ -70,8 +90,6 @@ class BaleActionService
         if (empty($missing)) {
             $this->forgetPendingMessage($userId);
             $this->forgetLastJoinMessage($userId);
-
-            //پردازش متن کاربر
             $this->messageProcessor->process($message);
             return;
         }
@@ -84,6 +102,17 @@ class BaleActionService
         if ($newMessageId) {
             $this->rememberLastJoinMessage($userId, $newMessageId);
         }
+    }
+
+    private function extractDirectDownloadSongId(array $message): ?int
+    {
+        $text = trim($message['text'] ?? '');
+
+        if (!preg_match('/^\/start\s+dl_(\d+)\s*$/u', $text, $matches)) {
+            return null;
+        }
+
+        return (int) $matches[1];
     }
 
     private function isInstaUrl(array $message): bool
@@ -105,9 +134,9 @@ class BaleActionService
         $chatId = $message['chat']['id'];
         $this->baleService->sendMessage(
             $chatId,
-            "🎵 پست اینستاگرام فرستادی؟\n\n"
-                . "توی صف جستجو قرار گرفت 🔎\n"
-                . "وقتی پیدا شد آهنگ رو همینجا برات ارسال میکنم 🫡⚡️\n"
+            "✅ لینک اینستاگرام با موفقیت ثبت شد\n\n"
+                . "⏰ آهنگ در صف دانلود قرار گرفت.\n\n"
+                . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
         );
     }
 
@@ -146,7 +175,7 @@ class BaleActionService
         $this->baleService->sendMessage(
             $chatId,
             "✅ فایلی که فرستادی با موفقیت ثبت شد\n\n"
-                . "آهنگ توی صف دانلود قرار گرفت 🔎\n"
+                . "آهنگ توی صف دانلود قرار گرفت 🔎\n\n"
                 . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
         );
     }
@@ -164,6 +193,14 @@ class BaleActionService
         $messageId  = $callback['message']['message_id'];
         $data       = $callback['data'] ?? '';
         $callbackId = $callback['id']; // شناسه callback برای answer فوری
+
+        if (
+            $this->adminService->isAdmin((int) $userId)
+            && (($callback['data'] ?? '') === 'admin_cancel' || $this->adminService->hasActiveFlow((int) $userId))
+        ) {
+            $this->adminService->handleCallback($callback);
+            return;
+        }
 
         // ۱. دکمه "بررسی عضویت"
         if ($data === 'bale_check_membership') {
@@ -187,70 +224,10 @@ class BaleActionService
         if (str_starts_with($data, 'song_')) {
             $songId = (int) str_replace('song_', '', $data);
             $this->songUploadService->findBestLinkAndSendForBale($callback, $songId, $chatId, $this->baleService);
-            //     $this->showDownloadOptionsAction->execute($callbackId, $songId, $chatId, $messageId);
-            // } elseif (str_starts_with($data, 'download_music_')) {
-            //     // ✅ فوری: answer callback + حذف دکمه‌ها + قفل کردن
-            //     $this->handleMusicDownload($callbackId, $callback, $data, $chatId, $messageId);
         } elseif (str_starts_with($data, 'request_song_')) {
             $token = str_replace('request_song_', '', $data);
             $this->handleSongRequest($callbackId, $token, $chatId, $messageId);
         }
-    }
-
-    // ─────────────────────────────────────────────────
-    // هندل دانلود آهنگ - با قفل ضد تکرار
-    // ─────────────────────────────────────────────────
-
-    private function handleMusicDownload(
-        string $callbackId,
-        array $callback,
-        string $data,
-        int|string $chatId,
-        int $messageId
-    ): void {
-        // استخراج song_id از callback_data
-        $parts = explode('_', $data);
-        $songId = (int) ($parts[3] ?? 0);
-
-        if (!$songId) {
-            $this->baleService->answerCallbackQuery($callbackId, '❌ آهنگ پیدا نشد');
-            return;
-        }
-
-        // ─────────────────────────────────────────────────
-        // 🔒 کلید قفل: هر کاربر برای هر آهنگ فقط یکبار
-        // ─────────────────────────────────────────────────
-        $lockKey = "bale:download_lock:{$chatId}:{$songId}";
-        $lockTtl = 30; // ۳۰ ثانیه قفل
-
-        if (Cache::has($lockKey)) {
-            // قبلاً در حال پردازش است
-            $this->baleService->answerCallbackQuery($callbackId, '⏳ در حال آماده‌سازی...');
-            return;
-        }
-
-        // ─────────────────────────────────────────────────
-        // ✅ قفل رو فعال کن + دکمه‌ها رو حذف کن
-        // ─────────────────────────────────────────────────
-        Cache::put($lockKey, true, now()->addSeconds($lockTtl));
-
-        // حذف فوری دکمه‌ها و answer callback
-        $this->baleService->editMessageText(
-            $chatId,
-            $messageId,
-            '⏳ در حال آماده‌سازی فایل... 🎶',
-            []
-        );
-        $this->baleService->answerCallbackQuery($callbackId);
-
-        // پردازش در background
-        $this->songUploadService->processAndSendForBaleWithLock(
-            $callback,
-            $data,
-            $chatId,
-            $this->baleService,
-            $lockKey
-        );
     }
 
     // ─────────────────────────────────────────────────

@@ -206,4 +206,29 @@ class TelegramService
 
         return Http::post($this->apiUrl . '/copyMessage', $payload);
     }
+
+    public function getFile(string $fileId): ?array
+    {
+        $response = Http::post($this->apiUrl . '/getFile', ['file_id' => $fileId]);
+
+        if (!$response->successful()) {
+            Log::warning('Telegram getFile failed', ['file_id' => $fileId, 'body' => $response->json('description')]);
+            return null;
+        }
+
+        return $response->json('result');
+    }
+
+    public function downloadFile(string $filePath, string $destination): bool
+    {
+        $url = 'https://api.telegram.org/file/bot' . config('telegram.bot_token') . '/' . $filePath;
+        $stream = fopen($destination, 'w');
+        $response = Http::timeout(120)->withOptions(['sink' => $stream])->get($url);
+
+        if (is_resource($stream)) {
+            fclose($stream);
+        }
+
+        return $response->successful();
+    }
 }
