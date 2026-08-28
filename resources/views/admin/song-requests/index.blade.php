@@ -70,7 +70,6 @@
         <form id="searchForm" method="GET" action="{{ route('admin.song-requests.index') }}"
             class="flex flex-wrap gap-4 items-end">
 
-            {{-- جستجو --}}
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-xs text-gray-500 mb-1">جستجو</label>
                 <div class="relative">
@@ -84,7 +83,6 @@
                 </div>
             </div>
 
-            {{-- فیلتر وضعیت --}}
             <div class="min-w-[160px]">
                 <label class="block text-xs text-gray-500 mb-1">وضعیت</label>
                 <select name="status"
@@ -109,14 +107,38 @@
         </form>
     </div>
 
+    {{-- فرم نامرئی حذف گروهی — چک‌باکس‌های توی جدول با attribute «form» بهش وصل می‌شن --}}
+    <form id="bulk-delete-form" method="POST" action="{{ route('admin.song-requests.bulk-destroy') }}"
+        onsubmit="return confirm('موارد انتخاب‌شده حذف شوند؟ این کار قابل بازگشت نیست.');">
+        @csrf
+        @method('DELETE')
+    </form>
+
     {{-- ═══════════════════════════════════════════════════ --}}
     {{-- جدول درخواست‌ها --}}
     {{-- ═══════════════════════════════════════════════════ --}}
     <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+
+        {{-- نوار ابزار انتخاب گروهی --}}
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-3 bg-gray-50/60">
+            <label class="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" id="select-all"
+                    class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                <span>انتخاب همه (این صفحه)</span>
+            </label>
+
+            <button type="submit" form="bulk-delete-form" id="bulk-delete-btn"
+                class="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled>
+                🗑 حذف انتخاب‌شده‌ها
+            </button>
+        </div>
+
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
                     <tr class="bg-gray-50 border-b border-gray-200">
+                        <th class="w-10 py-3 px-5"></th>
                         <th class="text-right py-3 px-5 text-gray-500 font-medium">متن جستجو</th>
                         <th class="text-right py-3 px-5 text-gray-500 font-medium">کاربر</th>
                         <th class="text-right py-3 px-5 text-gray-500 font-medium">پلتفرم</th>
@@ -128,80 +150,82 @@
                 </thead>
                 <tbody>
                     @forelse($songRequests as $req)
-                                    <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                                        <td class="py-3 px-5">
-                                            <p class="font-medium text-gray-900 max-w-[250px] truncate">{{ $req->query }}</p>
-                                        </td>
-                                        <td class="py-3 px-5">
-                                            <p class="text-gray-700">{{ $req->full_name }}</p>
-                                            @if($req->username)
-                                                <p class="text-xs text-gray-400" dir="ltr">{{ $req->username }}</p>
-                                            @endif
-                                        </td>
-                                        <td class="py-3 px-5">
-                                            @if($req->platform === 'telegram')
-                                                <span
-                                                    class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800">تلگرام</span>
-                                            @elseif($req->platform === 'bale')
-                                                <span
-                                                    class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">بله</span>
-                                            @else
-                                                <span class="text-xs text-gray-400">—</span>
-                                            @endif
-                                        </td>
-                                        <td class="py-3 px-5">
-                                            @php
-                                                $statusClasses = match ($req->status) {
-                                                    'pending' => 'bg-yellow-100 text-yellow-800',
-                                                    'processing' => 'bg-blue-100 text-blue-800',
-                                                    'completed' => 'bg-green-100 text-green-800',
-                                                    'rejected' => 'bg-red-100 text-red-800',
-                                                    default => 'bg-gray-100 text-gray-800',
-                                                };
-                                            @endphp
-                         <span
-                                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $statusClasses }}">
-                                                {{ $req->status_label }}
-                                            </span>
-                                        </td>
-                                        <td class="py-3 px-5 text-gray-500 max-w-[200px] truncate">
-                                            {{ $req->admin_note ?? '—' }}
-                                        </td>
-                                        <td class="py-3 px-5 text-gray-500 whitespace-nowrap">
-                                            {{ jdate($req->created_at)->ago() }}
-                                        </td>
-                                        <td class="py-3 px-5">
-                                            <div class="flex items-center justify-center gap-1">
+                        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                            <td class="py-3 px-5">
+                                <input type="checkbox" name="ids[]" value="{{ $req->id }}" form="bulk-delete-form"
+                                    class="row-check h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            </td>
+                            <td class="py-3 px-5">
+                                <p class="font-medium text-gray-900 max-w-[250px] truncate">{{ $req->query }}</p>
+                            </td>
+                            <td class="py-3 px-5">
+                                <p class="text-gray-700">{{ $req->full_name }}</p>
+                                @if($req->username)
+                                    <p class="text-xs text-gray-400" dir="ltr">{{ $req->username }}</p>
+                                @endif
+                            </td>
+                            <td class="py-3 px-5">
+                                @if($req->platform === 'telegram')
+                                    <span
+                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-sky-100 text-sky-800">تلگرام</span>
+                                @elseif($req->platform === 'bale')
+                                    <span
+                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">بله</span>
+                                @else
+                                    <span class="text-xs text-gray-400">—</span>
+                                @endif
+                            </td>
+                            <td class="py-3 px-5">
+                                @php
+                                    $statusClasses = match ($req->status) {
+                                        'pending' => 'bg-yellow-100 text-yellow-800',
+                                        'processing' => 'bg-blue-100 text-blue-800',
+                                        'completed' => 'bg-green-100 text-green-800',
+                                        'rejected' => 'bg-red-100 text-red-800',
+                                        default => 'bg-gray-100 text-gray-800',
+                                    };
+                                @endphp
+                                <span
+                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {{ $statusClasses }}">
+                                    {{ $req->status_label }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-5 text-gray-500 max-w-[200px] truncate">
+                                {{ $req->admin_note ?? '—' }}
+                            </td>
+                            <td class="py-3 px-5 text-gray-500 whitespace-nowrap">
+                                {{ jdate($req->created_at)->ago() }}
+                            </td>
+                            <td class="py-3 px-5">
+                                <div class="flex items-center justify-center gap-1">
+                                    <a href="{{ route('admin.song-requests.show', $req) }}" title="جزئیات / یادداشت"
+                                        class="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                        </svg>
+                                    </a>
 
-                                                {{-- مشاهده / اضافه کردن یادداشت --}}
-                                                <a href="{{ route('admin.song-requests.show', $req) }}" title="جزئیات / یادداشت"
-                                                    class="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                                                    </svg>
-                                                </a>
-
-                                                <form method="POST" action="{{ route('admin.song-requests.destroy', $req) }}" class="inline"
-                                                    onsubmit="return confirm('آیا از حذف این درخواست مطمئن هستید؟')">
-                                                    @csrf
-                                                    @method('DELETE')
-                                                    <button type="submit" title="حذف"
-                                                        class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                                        </svg>
-                                                    </button>
-                                                </form>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                    <form method="POST" action="{{ route('admin.song-requests.destroy', $req) }}" class="inline"
+                                        onsubmit="return confirm('آیا از حذف این درخواست مطمئن هستید؟')">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button type="submit" title="حذف"
+                                            class="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
                     @empty
                         <tr>
-                            <td colspan="7" class="py-12 text-center text-gray-400">
+                            <td colspan="8" class="py-12 text-center text-gray-400">
                                 <div class="text-4xl mb-2">📭</div>
                                 هیچ درخواستی یافت نشد.
                             </td>
@@ -219,3 +243,33 @@
     </div>
 
 @endsection
+
+@push('scripts')
+    <script>
+        (function () {
+            const selectAll = document.getElementById('select-all');
+            const bulkBtn = document.getElementById('bulk-delete-btn');
+            const checks = () => Array.from(document.querySelectorAll('.row-check'));
+
+            function syncBulkBtn() {
+                const any = checks().some((c) => c.checked);
+                if (bulkBtn) bulkBtn.disabled = !any;
+            }
+
+            selectAll?.addEventListener('change', function () {
+                checks().forEach((c) => { c.checked = selectAll.checked; });
+                syncBulkBtn();
+            });
+
+            document.addEventListener('change', function (e) {
+                if (e.target.classList?.contains('row-check')) {
+                    const all = checks();
+                    if (selectAll) {
+                        selectAll.checked = all.length > 0 && all.every((c) => c.checked);
+                    }
+                    syncBulkBtn();
+                }
+            });
+        })();
+    </script>
+@endpush

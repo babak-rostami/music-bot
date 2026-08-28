@@ -61,6 +61,7 @@ Route::prefix('admin_page')->name('admin.')->group(function () {
         Route::resource('artists', ArtistController::class);
 
         // مدیریت درخواست‌های آپلود
+        Route::delete('song-requests/bulk', [SongRequestController::class, 'bulkDestroy'])->name('song-requests.bulk-destroy');
         Route::resource('song-requests', SongRequestController::class)->except(['create', 'store', 'edit']);
         Route::post('song-requests/{songRequest}/update-status', [SongRequestController::class, 'updateStatus'])->name('song-requests.update-status');
 

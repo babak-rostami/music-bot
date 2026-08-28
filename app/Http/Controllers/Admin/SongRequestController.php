@@ -103,4 +103,20 @@ class SongRequestController extends Controller
 
         return redirect()->route('admin.song-requests.index')->with('success', 'درخواست با موفقیت حذف شد.');
     }
+
+    public function bulkDestroy(Request $request)
+    {
+        $validated = $request->validate([
+            'ids'   => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:song_requests,id'],
+        ]);
+
+        $count = SongRequest::query()
+            ->whereIn('id', $validated['ids'])
+            ->delete();
+
+        return redirect()
+            ->route('admin.song-requests.index')
+            ->with('success', "{$count} درخواست حذف شد.");
+    }
 }
