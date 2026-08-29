@@ -26,6 +26,20 @@
             </div>
         </div>
 
+        <a href="{{ route('admin.comments.index') }}"
+            class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:border-orange-300 transition">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-500">نظرات کاربران</p>
+                    <p class="text-2xl font-bold text-gray-900 mt-1">
+                        {{ number_format(\App\Models\Comment::count()) }}
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-orange-50 text-orange-600 rounded-xl flex items-center justify-center text-2xl">💬
+                </div>
+            </div>
+        </a>
+
         {{-- آهنگ‌ها --}}
         <a href="{{ route('admin.songs.index') }}"
             class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 hover:border-purple-300 transition">
@@ -191,11 +205,11 @@
                         </div>
                         <span
                             class="text-xs font-medium px-2.5 py-1 rounded-full
-                                                                                                                                                                                            {{ $req->status === 'pending' ? 'bg-yellow-100 text-yellow-800' : '' }}
-                                                                                                                                                                                            {{ $req->status === 'processing' ? 'bg-blue-100 text-blue-800' : '' }}
-                                                                                                                                                                                            {{ $req->status === 'completed' ? 'bg-green-100 text-green-800' : '' }}
-                                                                                                                                                                                            {{ $req->status === 'rejected' ? 'bg-red-100 text-red-800' : '' }}
-                                                                                                                                                                                        ">{{ $req->status_label }}</span>
+                                                                                                                                                                                                            {{ $req->status === 'pending' ? 'bg-yellow-100 text-yellow-800' : '' }}
+                                                                                                                                                                                                            {{ $req->status === 'processing' ? 'bg-blue-100 text-blue-800' : '' }}
+                                                                                                                                                                                                            {{ $req->status === 'completed' ? 'bg-green-100 text-green-800' : '' }}
+                                                                                                                                                                                                            {{ $req->status === 'rejected' ? 'bg-red-100 text-red-800' : '' }}
+                                                                                                                                                                                                        ">{{ $req->status_label }}</span>
                     </div>
                 @endforeach
             </div>
@@ -221,6 +235,30 @@
                 @endforeach
             </div>
         </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mt-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-lg font-semibold text-gray-900">آخرین نظرات</h2>
+                <a href="{{ route('admin.comments.index') }}" class="text-sm text-indigo-600 hover:text-indigo-700">مشاهده
+                    همه</a>
+            </div>
+            <div class="space-y-3">
+                @foreach(\App\Models\Comment::whereNull('parent_id')->latest()->take(5)->get() as $comment)
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-medium text-gray-900 truncate">{{ $comment->name }}:
+                                {{ \Illuminate\Support\Str::limit($comment->body, 60) }}</p>
+                            <p class="text-xs text-gray-500">{{ jdate($comment->created_at)->ago() }}</p>
+                        </div>
+                        <span
+                            class="text-xs font-medium px-2.5 py-1 rounded-full {{ $comment->status ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800' }}">
+                            {{ $comment->status ? 'تایید‌شده' : 'مخفی' }}
+                        </span>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+
     </div>
 
 @endsection

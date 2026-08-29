@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\SongRequestController;
 use App\Http\Controllers\Admin\SongSearchQueryController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\BotUserController;
+use App\Http\Controllers\Admin\CommentController;
 use App\Http\Controllers\TestController;
 use App\Http\Middleware\AdminMiddleware;
 use Illuminate\Support\Facades\Route;
@@ -76,5 +77,11 @@ Route::prefix('admin_page')->name('admin.')->group(function () {
         Route::delete('song-search-queries/bulk', [SongSearchQueryController::class, 'bulkDestroy'])->name('song-search-queries.bulk-destroy');
         Route::delete('song-search-queries/low-count', [SongSearchQueryController::class, 'destroyLowCount'])->name('song-search-queries.destroy-low-count');
         Route::delete('song-search-queries/{songSearchQuery}', [SongSearchQueryController::class, 'destroy'])->name('song-search-queries.destroy');
+
+
+        // مدیریت نظرات — bulk حتماً باید قبل از resource ثبت بشه
+        Route::delete('comments/bulk', [CommentController::class, 'bulkDestroy'])->name('comments.bulk-destroy');
+        Route::resource('comments', CommentController::class)->only(['index', 'update', 'destroy']);
+        Route::post('comments/{comment}/update-status', [CommentController::class, 'updateStatus'])->name('comments.update-status');
     });
 });

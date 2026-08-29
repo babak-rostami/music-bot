@@ -64,6 +64,12 @@
                     <span>📥</span> درخواست‌ها
                 </a>
 
+                <a href="{{ route('admin.comments.index') }}"
+                    class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
+        {{ request()->routeIs('admin.comments.*') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                    <span>💬</span> نظرات
+                </a>
+
                 <a href="{{ route('admin.activity-logs.index') }}"
                     class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
                         {{ request()->routeIs('admin.activity-logs.*') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
