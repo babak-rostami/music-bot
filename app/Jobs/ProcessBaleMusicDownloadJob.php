@@ -3,11 +3,13 @@
 namespace App\Jobs;
 
 use App\Bot\Bale\Services\BaleService;
+use App\Bot\Bale\Support\SongReactionPresenter;
 use App\Bot\BotUserService;
 use App\Bot\NotificationService;
 use App\Models\ActivityLog;
 use App\Models\Song;
 use App\Services\SongFileService;
+use App\Services\SongReactionService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -55,7 +57,8 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         BaleService $bale,
         NotificationService $notifier,
         BotUserService $botUserService,
-        SongFileService $songFileService
+        SongFileService $songFileService,
+        SongReactionService $reactionService
     ): void {
         $song = Song::find($this->songId);
 
@@ -87,7 +90,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
 
             if ($response->successful()) {
                 $song->increment('downloads_count');
-                $this->onSendSuccess($bale, $notifier, $botUserService, $song, $userId, $quality);
+                $this->onSendSuccess($bale, $notifier, $botUserService, $reactionService, $song, $userId, $quality);
                 $this->releaseLock();
                 return;
             }
@@ -177,7 +180,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
             // ── بررسی نتیجه نهایی ارسال ──
             if ($response->successful()) {
                 $song->increment('downloads_count');
-                $this->onSendSuccess($bale, $notifier, $botUserService, $song, $userId, $quality);
+                $this->onSendSuccess($bale, $notifier, $botUserService, $reactionService, $song, $userId, $quality);
             } else {
                 $this->onSendFailure(
                     $bale,
@@ -221,7 +224,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
             $displayText = $song->lyrics;
 
             if (count($lines) > 3) {
-                $displayText = implode("\n", array_slice($lines, 0, 3)) . "\n...";
+                $displayText = implode("\n", array_slice($lines, 0, 10)) . "\n...";
 
                 $baseUrl = $song->show_in_saz_site == 1 ? "https://saz.becharkh.com/songs/" : "https://music.becharkh.com/songs/";
                 $url = $baseUrl . $song->slug;
@@ -249,18 +252,31 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         BaleService $bale,
         NotificationService $notifier,
         BotUserService $botUserService,
+        SongReactionService $reactionService,
         Song $song,
         int $userId,
         $quality
     ): void {
+        $this->sendReactionPrompt($bale, $reactionService, $song, $userId);
         $this->sendLyrics($bale, $song);
+
         if ($this->messageId) {
             $bale->deleteMessage($this->chatId, $this->messageId);
         }
 
-        // ✅ نوتیفیکیشن + ریست شمارش خطا
         $notifier->songSent($song, $this->chatId, $quality, 'bale', $userId);
         $botUserService->recordSuccessfulSend($userId, 'bale');
+    }
+
+    private function sendReactionPrompt(BaleService $bale, SongReactionService $reactionService, Song $song, int $userId): void
+    {
+        $userReaction = $reactionService->getUserReaction($song, 'bale', (string) $userId);
+
+        $bale->sendMessage(
+            $this->chatId,
+            SongReactionPresenter::messageText(),
+            SongReactionPresenter::keyboard($song->id, $song->likes_count, $song->dislikes_count, $userReaction)
+        );
     }
 
     // ─────────────────────────────────────────────────

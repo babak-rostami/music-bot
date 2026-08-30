@@ -8,6 +8,8 @@ use App\Bot\Telegram\Services\TelegramService;
 use App\Models\ActivityLog;
 use App\Models\Song;
 use App\Services\SongFileService;
+use App\Bot\Telegram\Support\SongReactionPresenter;
+use App\Services\SongReactionService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -52,7 +54,8 @@ class ProcessMusicDownloadJob implements ShouldQueue
         TelegramService $telegram,
         NotificationService $notifier,
         BotUserService $botUserService,
-        SongFileService $songFileService
+        SongFileService $songFileService,
+        SongReactionService $reactionService
     ): void {
         $song = Song::find($this->songId);
 
@@ -64,69 +67,41 @@ class ProcessMusicDownloadJob implements ShouldQueue
             return;
         }
 
-        // در چت خصوصی: chatId == userId
         $userId = (int) $this->chatId;
 
-        // 1 . چک میکنم ببینم قبلا اگه کش شده بود همون رو ارسال کن
         $cachedData = $songFileService->getCachedFileId($song, 'telegram');
         if ($cachedData) {
-            $cachedFileId = $cachedData['file_id'];        // مثلاً "BAADBAADrwADBREAAYag"
-            $fileIdColumn = $cachedData['fileIdColumn'];   // مثلاً "telegram_file_id_320"
-            $quality      = $cachedData['quality'];        // "320" یا "128"
+            $cachedFileId = $cachedData['file_id'];
+            $fileIdColumn = $cachedData['fileIdColumn'];
+            $quality      = $cachedData['quality'];
 
-            $response = $telegram->sendAudioByFileId(
-                $userId,
-                $cachedFileId,
-                $song->title,
-                $song->artist_name
-            );
+            $response = $telegram->sendAudioByFileId($userId, $cachedFileId, $song->title, $song->artist_name);
 
             if ($response->successful()) {
                 $song->increment('downloads_count');
-
-                $this->sendLyrics($telegram, $song);
-
-                if ($this->messageId) {
-                    $telegram->deleteMessage($userId, $this->messageId);
-                }
-
-                // ✅ نوتیفیکیشن ارسال موفق + ریست خطا
-                $notifier->songSent($song, $userId, $quality, 'telegram', $userId);
-                $botUserService->recordSuccessfulSend($userId, 'telegram');
-
+                $this->onSendSuccess($telegram, $notifier, $botUserService, $reactionService, $song, $userId, $quality);
                 return;
             }
 
-            // ❌ ارسال ناموفق
             $error = $response->json('description', 'خطای ناشناخته');
             $notifier->songSendFailed($song, $this->chatId, $quality, $error, 'telegram', $userId);
             $botUserService->recordFailedSend($userId, 'telegram');
 
-            // اگر خطا مربوط به file_id نبود (یعنی کاربر بلاک کرده) → ادامه نده
             if (BotUserService::isBlockedError($response)) {
                 return;
             }
 
-            // file_id نامعتبر → پاک کن و از مسیر job برو
             $song->update([$fileIdColumn => null]);
         }
 
-        // ─────────────────────────────────────────────────
-        // 2. کش نشده بود پس بهترین لینک دانلود رو باید پیدا کنیم
-        // دانلود + آپلود به کش + ارسال
-        // ─────────────────────────────────────────────────
         $tempDirectory = 'temp/' . Str::uuid();
         try {
             Storage::disk('local')->makeDirectory($tempDirectory);
 
-            // دانلود آهنگ از سرویس
             try {
                 $result = $songFileService->downloadBestSong($song, $tempDirectory);
             } catch (\Throwable $e) {
-                Log::error('خطا در دانلود آهنگ از سرویس', [
-                    'song_id' => $song->id,
-                    'error'   => $e->getMessage(),
-                ]);
+                Log::error('خطا در دانلود آهنگ از سرویس', ['song_id' => $song->id, 'error' => $e->getMessage()]);
                 $this->downloadLinkNotFound($telegram, $notifier, $song, $userId, 'خطا در دانلود');
                 return;
             }
@@ -142,21 +117,12 @@ class ProcessMusicDownloadJob implements ShouldQueue
             $fileName = $this->generateFileName($song);
             $cleanFile = $this->addMetadata($originalFile, $tempDirectory, $fileName, $song->title);
 
-            // آپلود به کانال Cache telegram
             $cacheResult = $telegram->uploadAudioToCacheChannel($cleanFile, $song);
 
             if ($cacheResult && !empty($cacheResult['file_id'])) {
-                // کش موفق: file_id ذخیره + ارسال با file_id
                 $song->update([$fileIdColumn => $cacheResult['file_id']]);
-
-                $response = $telegram->sendAudioByFileId(
-                    $this->chatId,
-                    $cacheResult['file_id'],
-                    $song->title,
-                    $song->artist_name
-                );
+                $response = $telegram->sendAudioByFileId($this->chatId, $cacheResult['file_id'], $song->title, $song->artist_name);
             } else {
-                // Fallback: کش نشد → مستقیم بفرست
                 $notifier->log(
                     ActivityLog::TYPE_DOWNLOAD_STARTED,
                     "آپلود به کانال کش ناموفق، ارسال مستقیم",
@@ -165,33 +131,16 @@ class ProcessMusicDownloadJob implements ShouldQueue
                     'telegram'
                 );
                 Log::warning('Cache upload failed, sending directly', ['song_id' => $this->songId]);
-
-                $response = $telegram->sendAudio(
-                    $this->chatId,
-                    $cleanFile,
-                    $fileName,
-                    $song->title,
-                    $song->artist_name
-                );
+                $response = $telegram->sendAudio($this->chatId, $cleanFile, $fileName, $song->title, $song->artist_name);
             }
 
-            // ── بررسی نتیجه نهایی ارسال ──
             if ($response->successful()) {
                 $song->increment('downloads_count');
-                $this->onSendSuccess($telegram, $notifier, $botUserService, $song, $userId, $quality);
+                $this->onSendSuccess($telegram, $notifier, $botUserService, $reactionService, $song, $userId, $quality);
             } else {
-                $this->onSendFailure(
-                    $telegram,
-                    $notifier,
-                    $botUserService,
-                    $song,
-                    $userId,
-                    $response->json('description', 'خطای ناشناخته'),
-                    $quality
-                );
+                $this->onSendFailure($telegram, $notifier, $botUserService, $song, $userId, $response->json('description', 'خطای ناشناخته'), $quality);
             }
         } finally {
-            // همیشه temp رو پاک کن
             Storage::disk('local')->deleteDirectory($tempDirectory);
         }
     }
@@ -204,7 +153,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
             $displayText = $song->lyrics;
 
             if (count($lines) > 3) {
-                $displayText = implode("\n", array_slice($lines, 0, 3)) . "\n...";
+                $displayText = implode("\n", array_slice($lines, 0, 10)) . "\n...";
 
                 $baseUrl = $song->show_in_saz_site == 1 ? "https://saz.becharkh.com/songs/" : "https://music.becharkh.com/songs/";
                 $url = $baseUrl . $song->slug;
@@ -250,18 +199,31 @@ class ProcessMusicDownloadJob implements ShouldQueue
         TelegramService $telegram,
         NotificationService $notifier,
         BotUserService $botUserService,
+        SongReactionService $reactionService,
         Song $song,
         int $userId,
         $quality
     ): void {
+        $this->sendReactionPrompt($telegram, $reactionService, $song, $userId);
         $this->sendLyrics($telegram, $song);
+
         if ($this->messageId) {
             $telegram->deleteMessage($this->chatId, $this->messageId);
         }
 
-        // ✅ نوتیفیکیشن + ریست شمارش خطا
         $notifier->songSent($song, $this->chatId, $quality, 'telegram', $userId);
         $botUserService->recordSuccessfulSend($userId, 'telegram');
+    }
+
+    private function sendReactionPrompt(TelegramService $telegram, SongReactionService $reactionService, Song $song, int $userId): void
+    {
+        $userReaction = $reactionService->getUserReaction($song, 'telegram', (string) $userId);
+
+        $telegram->sendMessage(
+            $this->chatId,
+            SongReactionPresenter::messageText(),
+            SongReactionPresenter::keyboard($song->id, $song->likes_count, $song->dislikes_count, $userReaction)
+        );
     }
 
     // ─────────────────────────────────────────────────

@@ -4,11 +4,14 @@ namespace App\Bot\Bale\Services;
 
 use App\Bot\Bale\Actions\BaleShowDownloadOptionsAction;
 use App\Bot\Bale\MessageProcessor;
+use App\Bot\Bale\Support\SongReactionPresenter;
 use App\Bot\BotUserService;
 use App\Bot\NotificationService;
 use App\Jobs\ProcessBaleMusicDownloadJob;
+use App\Models\Song;
 use App\Models\SongRequest;
 use App\Services\AdminNotifier;
+use App\Services\SongReactionService;
 use App\Services\SongUploadService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -26,6 +29,7 @@ class BaleActionService
         private NotificationService $notifier,
         private BotUserService $botUserService,
         private BaleAdminService $adminService,
+        private SongReactionService $reactionService,
     ) {}
 
 
@@ -192,13 +196,19 @@ class BaleActionService
         $chatId     = $callback['message']['chat']['id'];
         $messageId  = $callback['message']['message_id'];
         $data       = $callback['data'] ?? '';
-        $callbackId = $callback['id']; // شناسه callback برای answer فوری
+        $callbackId = $callback['id'];
 
         if (
             $this->adminService->isAdmin((int) $userId)
-            && (($callback['data'] ?? '') === 'admin_cancel' || $this->adminService->hasActiveFlow((int) $userId))
+            && ($data === 'admin_cancel' || $this->adminService->hasActiveFlow((int) $userId))
         ) {
             $this->adminService->handleCallback($callback);
+            return;
+        }
+
+        // 🚀 لایک/دیس‌لایک نیازی به عضویت کانال نداره
+        if (str_starts_with($data, 'react_like_') || str_starts_with($data, 'react_dislike_')) {
+            $this->handleSongReactionCallback($callback);
             return;
         }
 
@@ -210,7 +220,6 @@ class BaleActionService
 
         // ۲. بقیه دکمه‌ها → اول چک کن عضو هست یا نه
         $missing = $this->membershipService->getMissingChannels($userId);
-
         if (!empty($missing)) {
             $this->deleteLastJoinMessage($chatId, $userId);
             $newMessageId = $this->membershipService->sendJoinMessage($chatId, $missing, $userName);
@@ -228,6 +237,40 @@ class BaleActionService
             $token = str_replace('request_song_', '', $data);
             $this->handleSongRequest($callbackId, $token, $chatId, $messageId);
         }
+    }
+
+    private function handleSongReactionCallback(array $callback): void
+    {
+        $data      = $callback['data'];
+        $chatId    = $callback['message']['chat']['id'];
+        $messageId = $callback['message']['message_id'];
+        $userId    = $callback['from']['id'];
+
+        $type   = str_starts_with($data, 'react_like_') ? 'like' : 'dislike';
+        $songId = (int) str_replace(['react_like_', 'react_dislike_'], '', $data);
+
+        $song = Song::find($songId);
+        if (!$song) {
+            $this->baleService->answerCallbackQuery($callback['id'], '❌ آهنگ پیدا نشد');
+            return;
+        }
+
+        $result = $this->reactionService->handleReaction($song, $type, 'bale', (string) $userId);
+
+        $toast = match ($result['action']) {
+            'added'    => $type === 'like' ? '👍 لایک شد' : '👎 دیس‌لایک شد',
+            'switched' => $type === 'like' ? '👍 نظرت به لایک تغییر کرد' : '👎 نظرت به دیس‌لایک تغییر کرد',
+            'removed'  => 'نظرت برداشته شد',
+        };
+
+        $this->baleService->answerCallbackQuery($callback['id'], $toast);
+
+        $this->baleService->editMessageText(
+            $chatId,
+            $messageId,
+            SongReactionPresenter::messageText(),
+            SongReactionPresenter::keyboard($songId, $result['likes_count'], $result['dislikes_count'], $result['user_reaction'])
+        );
     }
 
     // ─────────────────────────────────────────────────
