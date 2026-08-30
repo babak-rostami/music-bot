@@ -44,44 +44,65 @@ class SongController extends Controller
 
     public function index(Request $request)
     {
-        // ۱. بررسی اینکه آیا شناسه خواننده (artist_id) در درخواست وجود دارد یا خیر
+        $sortBy = $request->input('sort_by', 'created_at');
+        $sortDirection = $request->input('sort_direction', 'desc');
+
+        $allowedSorts = ['created_at', 'likes_count', 'dislikes_count', 'downloads_count'];
+        if (!in_array($sortBy, $allowedSorts, true)) {
+            $sortBy = 'created_at';
+        }
+
+        $allowedDirections = ['asc', 'desc'];
+        if (!in_array($sortDirection, $allowedDirections, true)) {
+            $sortDirection = 'desc';
+        }
+
+        $perPage = 25;
+
+        // ۱. فیلتر بر اساس خواننده
         if ($request->filled('artist_id')) {
             $artistId = $request->input('artist_id');
             $currentArtist = Artist::find($artistId);
 
-            // طبق خواسته شما: در صورت انتخاب خواننده، جستجوی الستیک اعمال نمی‌شود
-            // فقط آهنگ‌های همین خواننده با همان صفحه‌بندی لیست می‌شوند
             $songs = Song::whereHas('artists', function ($q) use ($artistId) {
                 $q->where('artists.id', $artistId);
-            })->latest()->paginate(15)->withQueryString();
+            })
+                ->orderBy($sortBy, $sortDirection)
+                ->paginate($perPage)
+                ->withQueryString();
 
-            return view('admin.songs.index', compact('songs', 'currentArtist'));
+            return view('admin.songs.index', compact('songs', 'currentArtist', 'sortBy', 'sortDirection'));
         }
 
-        // ۲. اگر خواننده‌ای انتخاب نشده بود و کلمه کلیدی جستجو (search) وجود داشت -> الستیک سرچ
+        // ۲. جستجوی الاستیک
         if ($search = $request->input('search')) {
-            $collection = Song::searchElastic($search);
-            $perPage = 15;
-            $page = request()->get('page', 1);
+            $collection = Song::searchElastic($search)
+                ->sortBy($sortBy, SORT_REGULAR, $sortDirection === 'desc')
+                ->values();
+
+            $perPageCurrent = $perPage;
+            $page = $request->get('page', 1);
 
             $songs = new LengthAwarePaginator(
-                $collection->forPage($page, $perPage),
+                $collection->forPage($page, $perPageCurrent),
                 $collection->count(),
-                $perPage,
+                $perPageCurrent,
                 $page,
                 [
-                    'path' => request()->url(),
-                    'query' => request()->query(),
+                    'path' => $request->url(),
+                    'query' => $request->query(),
                 ]
             );
 
-            return view('admin.songs.index', compact('songs'));
+            return view('admin.songs.index', compact('songs', 'sortBy', 'sortDirection'));
         }
 
-        // ۳. حالت پیش‌فرض: نمایش جدیدترین آهنگ‌ها بدون فیلتر و جستجو
-        $songs = Song::latest()->paginate(15)->withQueryString();
+        // ۳. حالت پیش‌فرض
+        $songs = Song::orderBy($sortBy, $sortDirection)
+            ->paginate($perPage)
+            ->withQueryString();
 
-        return view('admin.songs.index', compact('songs'));
+        return view('admin.songs.index', compact('songs', 'sortBy', 'sortDirection'));
     }
 
     public function create()

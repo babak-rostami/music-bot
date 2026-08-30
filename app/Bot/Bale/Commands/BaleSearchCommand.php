@@ -27,7 +27,7 @@ class BaleSearchCommand
         $chatId = $message['chat']['id'];
         $from   = $message['from'];
 
-        $result = Song::searchElastic($text)->take(5);
+        $result = Song::searchElastic($text)->take(8);
 
         // ─────────────────────────────────────────────
         // حالت ۱: هیچ نتیجه‌ای پیدا نشد

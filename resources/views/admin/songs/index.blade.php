@@ -61,6 +61,20 @@
     {{-- ═══════════════════════════════════════════════════ --}}
     {{-- جدول آهنگ‌ها --}}
     {{-- ═══════════════════════════════════════════════════ --}}
+    @php
+        $sortLink = function (string $column) use ($sortBy, $sortDirection) {
+            $direction = ($sortBy === $column && $sortDirection === 'desc') ? 'asc' : 'desc';
+            $query = array_merge(request()->except('page'), [
+                'sort_by' => $column,
+                'sort_direction' => $direction,
+            ]);
+            return request()->url() . '?' . http_build_query($query);
+        };
+        $sortArrow = fn(string $column) => $sortBy === $column
+            ? ($sortDirection === 'desc' ? '▼' : '▲')
+            : '';
+    @endphp
+
     <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -69,11 +83,33 @@
                         <th class="text-right py-3 px-5 text-gray-500 font-medium">شناسه</th>
                         <th class="text-right py-3 px-5 text-gray-500 font-medium">عنوان</th>
                         <th class="text-right py-3 px-5 text-gray-500 font-medium">خواننده</th>
-                        <th class="text-right py-3 px-5 text-gray-500 font-medium">دانلود</th>
+                        <th class="text-right py-3 px-5 text-gray-500 font-medium">
+                            <a href="{{ $sortLink('downloads_count') }}"
+                                class="inline-flex items-center gap-1 hover:text-indigo-600 transition">
+                                دانلود <span class="text-indigo-600">{{ $sortArrow('downloads_count') }}</span>
+                            </a>
+                        </th>
+                        <th class="text-center py-3 px-5 text-gray-500 font-medium">
+                            <a href="{{ $sortLink('likes_count') }}"
+                                class="inline-flex items-center justify-center gap-1 hover:text-emerald-600 transition">
+                                👍 لایک <span class="text-emerald-600">{{ $sortArrow('likes_count') }}</span>
+                            </a>
+                        </th>
+                        <th class="text-center py-3 px-5 text-gray-500 font-medium">
+                            <a href="{{ $sortLink('dislikes_count') }}"
+                                class="inline-flex items-center justify-center gap-1 hover:text-rose-600 transition">
+                                👎 دیس‌لایک <span class="text-rose-600">{{ $sortArrow('dislikes_count') }}</span>
+                            </a>
+                        </th>
                         <th class="text-center py-3 px-5 text-gray-500 font-medium">متن</th>
                         <th class="text-center py-3 px-5 text-gray-500 font-medium">۱۲۸</th>
                         <th class="text-center py-3 px-5 text-gray-500 font-medium">۳۲۰</th>
-                        <th class="text-right py-3 px-5 text-gray-500 font-medium">تاریخ</th>
+                        <th class="text-right py-3 px-5 text-gray-500 font-medium">
+                            <a href="{{ $sortLink('created_at') }}"
+                                class="inline-flex items-center gap-1 hover:text-indigo-600 transition">
+                                تاریخ <span class="text-indigo-600">{{ $sortArrow('created_at') }}</span>
+                            </a>
+                        </th>
                         <th class="text-center py-3 px-5 text-gray-500 font-medium">عملیات</th>
                     </tr>
                 </thead>
@@ -84,6 +120,17 @@
                             <td class="py-3 px-5 font-medium text-gray-900 max-w-[200px] truncate">{{ $song->title }}</td>
                             <td class="py-3 px-5 text-gray-600">{{ $song->artist_name }}</td>
                             <td class="py-3 px-5 text-gray-500 whitespace-nowrap">{{ number_format($song->downloads_count) }}
+                            </td>
+
+                            <td class="py-3 px-5 text-center">
+                                <span class="inline-flex items-center gap-1 text-emerald-700 font-medium">
+                                    👍 {{ number_format($song->likes_count) }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-5 text-center">
+                                <span class="inline-flex items-center gap-1 text-rose-700 font-medium">
+                                    👎 {{ number_format($song->dislikes_count) }}
+                                </span>
                             </td>
 
                             {{-- متن آهنگ --}}
@@ -119,7 +166,6 @@
 
                             <td class="py-3 px-5">
                                 <div class="flex items-center justify-center gap-2">
-                                    {{-- نمایش --}}
                                     <a href="https://music.becharkh.com/songs/{{ $song->slug }}" target="_blank" rel="noopener"
                                         title="نمایش"
                                         class="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors">
@@ -130,13 +176,11 @@
                                                 d="M2.458 12C3.732 7.943 7.523 5 12 5s8.268 2.943 9.542 7c-1.274 4.057-5.065 7-9.542 7S3.732 16.057 2.458 12z" />
                                         </svg>
                                     </a>
-                                    {{-- لینک های دانلود --}}
                                     <a href="{{route('admin.song.download.link.index', $song->id)}}" target="_blank"
                                         rel="noopener" title="لینک های دانلود"
                                         class="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors">
                                         🔗
                                     </a>
-                                    {{-- ویرایش --}}
                                     <a href="{{ route('admin.songs.edit', $song) }}" title="ویرایش"
                                         class="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -144,12 +188,10 @@
                                                 d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                         </svg>
                                     </a>
-                                    {{-- حذف --}}
                                     <form action="{{ route('admin.songs.destroy', $song) }}" method="POST"
                                         onsubmit="return confirm('آیا از حذف این آهنگ مطمئن هستید؟');">
                                         @csrf
                                         @method('DELETE')
-
                                         <button type="submit" title="حذف"
                                             class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -163,7 +205,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="9" class="py-12 text-center text-gray-400">
+                            <td colspan="11" class="py-12 text-center text-gray-400">
                                 <div class="text-4xl mb-2">🎵</div>
                                 هیچ آهنگی یافت نشد.
                             </td>
@@ -180,19 +222,14 @@
         @endif
     </div>
 
-
-
     {{-- ============================================= --}}
     {{-- مودال تست لینک --}}
     {{-- ============================================= --}}
 
     <div id="linkTesterModal" class="fixed inset-0 z-50 hidden items-center justify-center" role="dialog" aria-modal="true">
-        {{-- Overlay --}}
         <div class="absolute inset-0 bg-black/50" onclick="closeLinkTesterModal()"></div>
 
-        {{-- Modal Content --}}
         <div class="relative w-full max-w-lg mx-4 rounded-2xl bg-white shadow-2xl">
-            {{-- Header --}}
             <div class="flex items-center justify-between border-b border-gray-200 px-6 py-4">
                 <h3 class="text-lg font-bold text-gray-800">🔗 تست لینک دانلود</h3>
                 <button onclick="closeLinkTesterModal()"
@@ -203,9 +240,7 @@
                 </button>
             </div>
 
-            {{-- Body --}}
             <div class="px-6 py-5 space-y-4">
-                {{-- URL Input --}}
                 <div id="linkTesterInput">
                     <label for="linkTesterUrl" class="block text-sm font-medium text-gray-700 mb-1.5">
                         لینک مورد نظر
@@ -221,7 +256,6 @@
                     </div>
                 </div>
 
-                {{-- Loading State --}}
                 <div id="linkTesterLoading" class="hidden">
                     <div class="flex flex-col items-center gap-4 py-6">
                         <div class="w-12 h-12 rounded-full border-4 border-emerald-100 border-t-emerald-600 animate-spin">
@@ -231,7 +265,6 @@
                     </div>
                 </div>
 
-                {{-- Success State --}}
                 <div id="linkTesterSuccess" class="hidden">
                     <div class="flex flex-col items-center gap-3 py-4">
                         <div class="flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
@@ -245,7 +278,6 @@
                     </div>
                 </div>
 
-                {{-- Error State --}}
                 <div id="linkTesterError" class="hidden">
                     <div class="flex flex-col items-center gap-3 py-4">
                         <div class="flex h-14 w-14 items-center justify-center rounded-full bg-red-100">
@@ -260,7 +292,6 @@
                 </div>
             </div>
 
-            {{-- Footer --}}
             <div class="flex items-center justify-end gap-3 border-t border-gray-200 px-6 py-4">
                 <button onclick="closeLinkTesterModal()"
                     class="rounded-lg bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 transition">
@@ -278,7 +309,6 @@
         function openLinkTesterModal() {
             const modal = document.getElementById('linkTesterModal');
 
-            // Reset states
             document.getElementById('linkTesterLoading').classList.add('hidden');
             document.getElementById('linkTesterSuccess').classList.add('hidden');
             document.getElementById('linkTesterError').classList.add('hidden');
@@ -289,7 +319,6 @@
             modal.classList.add('flex');
             document.body.style.overflow = 'hidden';
 
-            // Focus input
             setTimeout(() => document.getElementById('linkTesterUrl').focus(), 100);
         }
 
@@ -308,7 +337,6 @@
                 return;
             }
 
-            // Show loading, hide results
             document.getElementById('linkTesterLoading').classList.remove('hidden');
             document.getElementById('linkTesterSuccess').classList.add('hidden');
             document.getElementById('linkTesterError').classList.add('hidden');
@@ -403,7 +431,6 @@
             document.getElementById('linkTesterError').classList.remove('hidden');
         }
 
-        // Close with Escape
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape') {
                 closeLinkTesterModal();
