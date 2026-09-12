@@ -5,10 +5,10 @@ namespace App\Jobs;
 use App\Bot\BotUserService;
 use App\Bot\NotificationService;
 use App\Bot\Telegram\Services\TelegramService;
+use App\Bot\Telegram\Support\SongReactionPresenter;
 use App\Models\ActivityLog;
 use App\Models\Song;
 use App\Services\SongFileService;
-use App\Bot\Telegram\Support\SongReactionPresenter;
 use App\Services\SongReactionService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -20,15 +20,16 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Throwable;
 
 class ProcessMusicDownloadJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $timeout = 300; // ۵ دقیقه
-    public int $tries = 3;
-    public int $backoff = 10;
+    public int $timeout = 300; // ۵ دقیقه در هر تلاش
+    public int $tries = 3;     // حداکثر ۳ تلاش
+    public int $backoff = 10;  // ۱۰ ثانیه فاصله بین تلاش‌ها
 
     public function __construct(
         public readonly int $songId,
@@ -45,11 +46,6 @@ class ProcessMusicDownloadJob implements ShouldQueue
         ];
     }
 
-    /**
-     * @param TelegramService    $telegram
-     * @param NotificationService $notifier
-     * @param BotUserService     $botUserService
-     */
     public function handle(
         TelegramService $telegram,
         NotificationService $notifier,
@@ -64,11 +60,14 @@ class ProcessMusicDownloadJob implements ShouldQueue
                 'song_id' => $this->songId,
             ]);
             Log::warning('Song not found in download job', ['song_id' => $this->songId]);
-            return;
+            return; // خطای دائمی — آهنگ اصلاً وجود نداره، تلاش مجدد فایده‌ای ندارد
         }
 
         $userId = (int) $this->chatId;
 
+        // ─────────────────────────────────────────────────
+        // ۱. تلاش با file_id کش‌شده
+        // ─────────────────────────────────────────────────
         $cachedData = $songFileService->getCachedFileId($song, 'telegram');
         if ($cachedData) {
             $cachedFileId = $cachedData['file_id'];
@@ -83,17 +82,24 @@ class ProcessMusicDownloadJob implements ShouldQueue
                 return;
             }
 
-            $error = $response->json('description', 'خطای ناشناخته');
-            $notifier->songSendFailed($song, $this->chatId, $quality, $error, 'telegram', $userId);
-            $botUserService->recordFailedSend($userId, 'telegram');
+            $error = $response->json('description') ?: 'شناسه فایل کش‌شده در تلگرام نامعتبر است';
 
             if (BotUserService::isBlockedError($response)) {
-                return;
+                $this->recordFailure($notifier, $botUserService, $song, $userId, $error, $quality);
+                return; // کاربر بات رو بلاک کرده — تلاش مجدد بی‌فایده است
             }
+
+            Log::info('Cached telegram file_id invalid, will retry with fresh download', [
+                'song_id' => $song->id,
+                'error'   => $error,
+            ]);
 
             $song->update([$fileIdColumn => null]);
         }
 
+        // ─────────────────────────────────────────────────
+        // ۲. دانلود تازه + آپلود به کش + ارسال
+        // ─────────────────────────────────────────────────
         $tempDirectory = 'temp/' . Str::uuid();
         try {
             Storage::disk('local')->makeDirectory($tempDirectory);
@@ -102,12 +108,13 @@ class ProcessMusicDownloadJob implements ShouldQueue
                 $result = $songFileService->downloadBestSong($song, $tempDirectory);
             } catch (\Throwable $e) {
                 Log::error('خطا در دانلود آهنگ از سرویس', ['song_id' => $song->id, 'error' => $e->getMessage()]);
-                $this->downloadLinkNotFound($telegram, $notifier, $song, $userId, 'خطا در دانلود');
-                return;
+                $notifier->songSendFailed($song, $this->chatId, '320', 'خطا در دانلود فایل از سرور مبدا', 'telegram', $userId);
+                throw new RuntimeException('خطا در دانلود فایل از سرور مبدا: ' . $e->getMessage(), previous: $e);
             }
+
             if (! $result) {
-                $this->downloadLinkNotFound($telegram, $notifier, $song, $userId, 'لینک دانلود خراب');
-                return;
+                $notifier->songSendFailed($song, $this->chatId, '320', 'هیچ لینک دانلود سالمی برای این آهنگ پیدا نشد', 'telegram', $userId);
+                throw new RuntimeException('هیچ لینک دانلود سالمی برای این آهنگ پیدا نشد');
             }
 
             $originalFile = $result['path'];
@@ -137,9 +144,18 @@ class ProcessMusicDownloadJob implements ShouldQueue
             if ($response->successful()) {
                 $song->increment('downloads_count');
                 $this->onSendSuccess($telegram, $notifier, $botUserService, $reactionService, $song, $userId, $quality);
-            } else {
-                $this->onSendFailure($telegram, $notifier, $botUserService, $song, $userId, $response->json('description', 'خطای ناشناخته'), $quality);
+                return;
             }
+
+            $error = $response->json('description') ?: 'ارسال فایل به تلگرام با خطا مواجه شد';
+
+            if (BotUserService::isBlockedError($response)) {
+                $this->recordFailure($notifier, $botUserService, $song, $userId, $error, $quality);
+                return; // کاربر بات رو بلاک کرده
+            }
+
+            $this->recordFailure($notifier, $botUserService, $song, $userId, $error, $quality);
+            throw new RuntimeException($error);
         } finally {
             Storage::disk('local')->deleteDirectory($tempDirectory);
         }
@@ -153,7 +169,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
             $displayText = $song->lyrics;
 
             if (count($lines) > 3) {
-                $displayText = implode("\n", array_slice($lines, 0, 10)) . "\n...";
+                $displayText = implode("\n", array_slice($lines, 0, 3)) . "\n...";
 
                 $baseUrl = $song->show_in_saz_site == 1 ? "https://saz.becharkh.com/songs/" : "https://music.becharkh.com/songs/";
                 $url = $baseUrl . $song->slug;
@@ -170,25 +186,6 @@ class ProcessMusicDownloadJob implements ShouldQueue
 
             $telegram->sendMessage($this->chatId, "🎤 متن آهنگ:\n\n" . $displayText, $inlineKeyboard);
         }
-    }
-
-
-    private function downloadLinkNotFound(
-        TelegramService $telegram,
-        NotificationService $notifier,
-        Song $song,
-        int $userId,
-        string $error,
-    ) {
-        if ($this->messageId) {
-            $telegram->editMessageText(
-                $this->chatId,
-                $this->messageId,
-                "آهنگ با موفقیت در صف دانلود قرار گرفت 🎤✅ \n\n" . $song->title . " - " . $song->artist_name,
-                []
-            );
-        }
-        $notifier->songSendFailed($song, $this->chatId, '320', $error, 'telegram', $userId);
     }
 
     // ─────────────────────────────────────────────────
@@ -227,60 +224,42 @@ class ProcessMusicDownloadJob implements ShouldQueue
     }
 
     // ─────────────────────────────────────────────────
-    // Helper: ارسال ناموفق
+    // Helper: ثبت خطا برای ادمین/تشخیص بلاک (بدون پیام به کاربر — پیام نهایی فقط در failed() ارسال می‌شود)
     // ─────────────────────────────────────────────────
 
-    private function onSendFailure(
-        TelegramService $telegram,
+    private function recordFailure(
         NotificationService $notifier,
         BotUserService $botUserService,
         Song $song,
         int $userId,
         string $error,
-        $quality
+        string $quality
     ): void {
-        // ❌ نوتیفیکیشن خطا + ثبت خطای ارسال (برای تشخیص بلاک‌شدن)
         $notifier->songSendFailed($song, $this->chatId, $quality, $error, 'telegram', $userId);
         $botUserService->recordFailedSend($userId, 'telegram');
-
-        // به کاربر اطلاع بده
-        if ($this->messageId) {
-            try {
-                $telegram->editMessageText(
-                    $this->chatId,
-                    $this->messageId,
-                    '❌ خطا در ارسال. لطفاً دوباره تلاش کنید.',
-                    []
-                );
-            } catch (Throwable $e) {
-                Log::warning('Could not edit error message', ['error' => $e->getMessage()]);
-            }
-        }
     }
 
     // ─────────────────────────────────────────────────
-    // وقتی جاب کاملاً شکست می‌خورد (تمام تلاش‌ها تمام شد)
+    // وقتی همه‌ی ۳ تلاش شکست بخورد، فقط اینجا صدا زده می‌شود
     // ─────────────────────────────────────────────────
 
     public function failed(Throwable $exception): void
     {
         Log::error('Music download job failed permanently', [
             'song_id'    => $this->songId,
-            'quality'    => '320',
             'chat_id'    => $this->chatId,
             'message_id' => $this->messageId ?? null,
+            'attempts'   => $this->attempts(),
             'error'      => $exception->getMessage(),
         ]);
 
-        // ✅ نوتیفیکیشن خطای دائمی
         try {
             app(NotificationService::class)->error(
-                'جاب دانلود آهنگ (شکست دائمی)',
+                "جاب دانلود آهنگ (شکست دائمی بعد از {$this->attempts()} تلاش)",
                 $exception->getMessage(),
                 'telegram',
                 [
                     'song_id'    => $this->songId,
-                    'quality'    => '320',
                     'chat_id'    => $this->chatId,
                     'message_id' => $this->messageId ?? null,
                 ]
@@ -295,7 +274,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
                 $telegram->editMessageText(
                     $this->chatId,
                     $this->messageId,
-                    '❌ خطا در دانلود یا پردازش فایل. لطفاً دوباره تلاش کنید.',
+                    '❌ متأسفانه بعد از چند بار تلاش، ارسال این آهنگ ناموفق بود. لطفاً کمی بعد دوباره امتحان کن.',
                     []
                 );
             }
@@ -335,16 +314,13 @@ class ProcessMusicDownloadJob implements ShouldQueue
         $outputDir = storage_path("app/private/{$dir}");
         $output = "{$outputDir}/{$fileName}";
 
-        // ساخت پوشه مقصد در صورت عدم وجود
         if (!file_exists($outputDir)) {
             mkdir($outputDir, 0755, true);
         }
 
-        // عنوان فایل (در صورت نرفتن عنوان دلخواه، آدرس کانال قرار می‌گیرد)
         $title = $customTitle ?? $channel;
         $comment = "Telegram & Bale: {$channel}";
 
-        // لیست متادیتای جدید جهت قرارگیری در بخش‌های مختلف
         $metadataFlags = [
             "-metadata title=" . escapeshellarg($title),
             "-metadata artist=" . escapeshellarg($channel),
@@ -359,7 +335,6 @@ class ProcessMusicDownloadJob implements ShouldQueue
 
         $metadataStr = implode(' ', $metadataFlags);
 
-        // اجرا و پاکسازی متادیتای قبلی و اعمال متادیتای جدید
         $command = sprintf(
             'ffmpeg -i %s -map 0:a -c copy -map_metadata -1 -map_metadata:s:a -1 %s -id3v2_version 3 %s -y 2>&1',
             escapeshellarg($input),
@@ -370,7 +345,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
         exec($command, $lines, $exit);
 
         if ($exit !== 0) {
-            throw new \RuntimeException("ffmpeg failed: " . implode("\n", $lines));
+            throw new RuntimeException("ffmpeg failed: " . implode("\n", $lines));
         }
 
         return $output;

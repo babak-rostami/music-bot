@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Throwable;
 
 class ProcessBaleMusicDownloadJob implements ShouldQueue
@@ -35,7 +36,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         public readonly int $songId,
         public readonly int|string $chatId,
         public readonly int|null $messageId,
-        public readonly ?string $lockKey = null, // ✅ کلید قفل برای آزادسازی بعد از اتمام
+        public readonly ?string $lockKey = null,
     ) {}
 
     public function middleware(): array
@@ -47,12 +48,6 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         ];
     }
 
-    /**
-     * @param BaleService         $bale
-     * @param NotificationService $notifier
-     * @param BotUserService      $botUserService
-     * @param SongFileService      $songFileService
-     */
     public function handle(
         BaleService $bale,
         NotificationService $notifier,
@@ -68,25 +63,21 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
             ]);
             Log::warning('Song not found in Bale download job', ['song_id' => $this->songId]);
             $this->releaseLock();
-            return;
+            return; // خطای دائمی — آهنگ اصلاً وجود ندارد
         }
 
-        // در چت خصوصی: chatId == userId
         $userId = (int) $this->chatId;
 
-        // 1 . چک میکنم ببینم قبلا اگه کش شده بود همون رو ارسال کن
+        // ─────────────────────────────────────────────────
+        // ۱. تلاش با file_id کش‌شده
+        // ─────────────────────────────────────────────────
         $cachedData = $songFileService->getCachedFileId($song, 'bale');
         if ($cachedData) {
-            $cachedFileId = $cachedData['file_id'];        // مثلاً "BAADBAADrwADBREAAYag"
-            $fileIdColumn = $cachedData['fileIdColumn'];   // مثلاً "bale_file_id_320"
-            $quality      = $cachedData['quality'];        // "320" یا "128"
+            $cachedFileId = $cachedData['file_id'];
+            $fileIdColumn = $cachedData['fileIdColumn'];
+            $quality      = $cachedData['quality'];
 
-            $response = $bale->sendAudioByFileId(
-                $userId,
-                $cachedFileId,
-                $song->title,
-                $song->artist_name
-            );
+            $response = $bale->sendAudioByFileId($userId, $cachedFileId, $song->title, $song->artist_name);
 
             if ($response->successful()) {
                 $song->increment('downloads_count');
@@ -95,35 +86,29 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
                 return;
             }
 
-            // ❌ file_id نامعتبر
-            $this->onSendFailure(
-                $bale,
-                $notifier,
-                $botUserService,
-                $song,
-                $userId,
-                'file_id کش‌شده نامعتبر',
-                $quality
-            );
+            $error = $response->json('description') ?: 'شناسه فایل کش‌شده در بله نامعتبر است';
 
-            // اگر کاربر بلاک کرده → ادامه‌ی تلاش بی‌فایده است
             if (BotUserService::isBlockedError($response)) {
+                $this->recordFailure($notifier, $botUserService, $song, $userId, $error, $quality);
                 $this->releaseLock();
-                return;
+                return; // کاربر بات رو بلاک کرده — تلاش مجدد بی‌فایده است
             }
+
+            Log::info('Cached bale file_id invalid, will retry with fresh download', [
+                'song_id' => $song->id,
+                'error'   => $error,
+            ]);
 
             $song->update([$fileIdColumn => null]);
         }
 
         // ─────────────────────────────────────────────────
-        // 2. کش نشده بود پس بهترین لینک دانلود رو باید پیدا کنیم
-        // دانلود + آپلود به کش + ارسال
+        // ۲. دانلود تازه + آپلود به کش + ارسال
         // ─────────────────────────────────────────────────
         $tempDirectory = 'temp/' . Str::uuid();
         try {
             Storage::disk('local')->makeDirectory($tempDirectory);
 
-            // دانلود آهنگ از سرویس
             try {
                 $result = $songFileService->downloadBestSong($song, $tempDirectory);
             } catch (\Throwable $e) {
@@ -131,12 +116,13 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
                     'song_id' => $song->id,
                     'error'   => $e->getMessage(),
                 ]);
-                $this->downloadLinkNotFound($bale, $notifier, $song, $userId, 'خطا در دانلود');
-                return;
+                $notifier->songSendFailed($song, $this->chatId, '320', 'خطا در دانلود فایل از سرور مبدا', 'bale', $userId);
+                throw new RuntimeException('خطا در دانلود فایل از سرور مبدا: ' . $e->getMessage(), previous: $e);
             }
+
             if (! $result) {
-                $this->downloadLinkNotFound($bale, $notifier, $song, $userId, 'لینک دانلود خراب');
-                return;
+                $notifier->songSendFailed($song, $this->chatId, '320', 'هیچ لینک دانلود سالمی برای این آهنگ پیدا نشد', 'bale', $userId);
+                throw new RuntimeException('هیچ لینک دانلود سالمی برای این آهنگ پیدا نشد');
             }
 
             $originalFile = $result['path'];
@@ -146,7 +132,6 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
             $fileName = $this->generateFileName($song);
             $cleanFile = $this->addMetadata($originalFile, $tempDirectory, $fileName, $song->title);
 
-            // آپلود به کانال Cache بله
             $cacheResult = $bale->uploadAudioToCacheChannel($cleanFile, $song);
 
             if ($cacheResult && !empty($cacheResult['file_id'])) {
@@ -177,43 +162,26 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
                 );
             }
 
-            // ── بررسی نتیجه نهایی ارسال ──
             if ($response->successful()) {
                 $song->increment('downloads_count');
                 $this->onSendSuccess($bale, $notifier, $botUserService, $reactionService, $song, $userId, $quality);
-            } else {
-                $this->onSendFailure(
-                    $bale,
-                    $notifier,
-                    $botUserService,
-                    $song,
-                    $userId,
-                    $response->json('description', 'خطای ناشناخته'),
-                    $quality
-                );
+                $this->releaseLock();
+                return;
             }
+
+            $error = $response->json('description') ?: 'ارسال فایل به بله با خطا مواجه شد';
+
+            if (BotUserService::isBlockedError($response)) {
+                $this->recordFailure($notifier, $botUserService, $song, $userId, $error, $quality);
+                $this->releaseLock();
+                return; // کاربر بات رو بلاک کرده
+            }
+
+            $this->recordFailure($notifier, $botUserService, $song, $userId, $error, $quality);
+            throw new RuntimeException($error);
         } finally {
             Storage::disk('local')->deleteDirectory($tempDirectory);
-            $this->releaseLock();
         }
-    }
-
-    private function downloadLinkNotFound(
-        BaleService $bale,
-        NotificationService $notifier,
-        Song $song,
-        int $userId,
-        string $error
-    ) {
-        if ($this->messageId) {
-            $bale->editMessageText(
-                $this->chatId,
-                $this->messageId,
-                "آهنگ با موفقیت در صف دانلود قرار گرفت 🎤✅ \n\n" . $song->title . " - " . $song->artist_name,
-                []
-            );
-        }
-        $notifier->songSendFailed($song, $this->chatId, '320', $error, 'bale', $userId);
     }
 
     private function sendLyrics(BaleService $bale, Song $song)
@@ -224,7 +192,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
             $displayText = $song->lyrics;
 
             if (count($lines) > 3) {
-                $displayText = implode("\n", array_slice($lines, 0, 10)) . "\n...";
+                $displayText = implode("\n", array_slice($lines, 0, 3)) . "\n...";
 
                 $baseUrl = $song->show_in_saz_site == 1 ? "https://saz.becharkh.com/songs/" : "https://music.becharkh.com/songs/";
                 $url = $baseUrl . $song->slug;
@@ -242,7 +210,6 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
             $bale->sendMessage($this->chatId, "🎤 متن آهنگ:\n\n" . $displayText, $inlineKeyboard);
         }
     }
-
 
     // ─────────────────────────────────────────────────
     // Helper: ارسال موفق
@@ -280,39 +247,24 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
     }
 
     // ─────────────────────────────────────────────────
-    // Helper: ارسال ناموفق
+    // Helper: ثبت خطا برای ادمین/تشخیص بلاک (بدون پیام به کاربر — پیام نهایی فقط در failed() ارسال می‌شود)
     // ─────────────────────────────────────────────────
 
-    private function onSendFailure(
-        BaleService $baleService,
+    private function recordFailure(
         NotificationService $notifier,
         BotUserService $botUserService,
         Song $song,
         int $userId,
         string $error,
-        $quality
+        string $quality
     ): void {
-        // ❌ نوتیفیکیشن خطا + ثبت خطای ارسال
         $notifier->songSendFailed($song, $this->chatId, $quality, $error, 'bale', $userId);
         $botUserService->recordFailedSend($userId, 'bale');
-
-        // به کاربر اطلاع بده
-        if ($this->messageId) {
-            try {
-                $baleService->editMessageText(
-                    $this->chatId,
-                    $this->messageId,
-                    '❌ خطا در ارسال. لطفاً دوباره تلاش کنید.',
-                    []
-                );
-            } catch (Throwable $e) {
-                Log::warning('Could not edit error message', ['error' => $e->getMessage()]);
-            }
-        }
     }
 
     /**
-     * آزادسازی قفل بعد از اتمام پردازش
+     * آزادسازی قفل ضد‌کلیک‌همزمان — فقط در پایان واقعی کار (موفق / بلاک دائمی / شکست نهایی)،
+     * نه بین تلاش‌های میانی، تا کلیک دوباره‌ی کاربر حین backoff یک جاب تکراری نسازد.
      */
     private function releaseLock(): void
     {
@@ -321,27 +273,29 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         }
     }
 
+    // ─────────────────────────────────────────────────
+    // وقتی همه‌ی ۳ تلاش شکست بخورد، فقط اینجا صدا زده می‌شود
+    // ─────────────────────────────────────────────────
+
     public function failed(Throwable $exception): void
     {
-        Log::error('Bale music download job failed', [
+        Log::error('Bale music download job failed permanently', [
             'song_id'    => $this->songId,
-            'quality'    => '320',
             'chat_id'    => $this->chatId,
             'message_id' => $this->messageId ?? null,
+            'attempts'   => $this->attempts(),
             'error'      => $exception->getMessage(),
         ]);
 
         $this->releaseLock();
 
-        // ✅ نوتیفیکیشن خطای دائمی
         try {
             app(NotificationService::class)->error(
-                'جاب دانلود آهنگ بله (شکست دائمی)',
+                "جاب دانلود آهنگ بله (شکست دائمی بعد از {$this->attempts()} تلاش)",
                 $exception->getMessage(),
                 'bale',
                 [
                     'song_id'    => $this->songId,
-                    'quality'    => '320',
                     'chat_id'    => $this->chatId,
                     'message_id' => $this->messageId ?? null,
                 ]
@@ -356,7 +310,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
                 $bale->editMessageText(
                     $this->chatId,
                     $this->messageId,
-                    '❌ خطا در دانلود. لطفاً دوباره تلاش کنید.',
+                    '❌ متأسفانه بعد از چند بار تلاش، ارسال این آهنگ ناموفق بود. لطفاً کمی بعد دوباره امتحان کن.',
                     []
                 );
             }
@@ -385,16 +339,13 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         $outputDir = storage_path("app/private/{$dir}");
         $output = "{$outputDir}/{$fileName}";
 
-        // ساخت پوشه مقصد در صورت عدم وجود
         if (!file_exists($outputDir)) {
             mkdir($outputDir, 0755, true);
         }
 
-        // عنوان فایل (در صورت نرفتن عنوان دلخواه، آدرس کانال قرار می‌گیرد)
         $title = $customTitle ?? $channel;
         $comment = "Telegram & Bale: {$channel}";
 
-        // لیست متادیتای جدید جهت قرارگیری در بخش‌های مختلف
         $metadataFlags = [
             "-metadata title=" . escapeshellarg($title),
             "-metadata artist=" . escapeshellarg($channel),
@@ -409,7 +360,6 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
 
         $metadataStr = implode(' ', $metadataFlags);
 
-        // اجرا و پاکسازی متادیتای قبلی و اعمال متادیتای جدید
         $command = sprintf(
             'ffmpeg -i %s -map 0:a -c copy -map_metadata -1 -map_metadata:s:a -1 %s -id3v2_version 3 %s -y 2>&1',
             escapeshellarg($input),
@@ -420,7 +370,7 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
         exec($command, $lines, $exit);
 
         if ($exit !== 0) {
-            throw new \RuntimeException("ffmpeg failed: " . implode("\n", $lines));
+            throw new RuntimeException("ffmpeg failed: " . implode("\n", $lines));
         }
 
         return $output;
