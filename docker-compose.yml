@@ -44,6 +44,7 @@ services:
     command: php-fpm
     volumes:
       - ./:/var/www
+      - ./youtube_cookies.txt:/var/www/youtube_cookies.txt
     networks:
       music-network:
         aliases:
@@ -93,6 +94,13 @@ services:
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - app
+    networks:
+      - music-network
+
+  ytdlp-pot:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    container_name: musicbot-ytdlp-pot
+    restart: unless-stopped
     networks:
       - music-network
 

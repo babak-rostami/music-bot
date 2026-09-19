@@ -123,6 +123,9 @@ class SongController extends Controller
             'download_link_128'    => ['nullable', 'max:500'],
             'download_link_320'    => ['nullable', 'max:500'],
             'aparat_link'          => ['nullable'],
+            'youtube_link'    => ['nullable', 'url', 'max:500'],
+            'spotify_link'    => ['nullable', 'url', 'max:500'],
+            'soundcloud_link' => ['nullable', 'url', 'max:500'],
             'cover'                => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
             'show_in_saz_site' => ['nullable'],
             'description' => ['nullable']
@@ -218,6 +221,9 @@ class SongController extends Controller
             'download_link_128'    => ['nullable', 'max:500'],
             'download_link_320'    => ['nullable', 'max:500'],
             'aparat_link'          => ['nullable'],
+            'youtube_link'    => ['nullable', 'url', 'max:500'],
+            'spotify_link'    => ['nullable', 'url', 'max:500'],
+            'soundcloud_link' => ['nullable', 'url', 'max:500'],
             'cover'                => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
             'show_in_saz_site' => ['nullable'],
             'description' => ['nullable']

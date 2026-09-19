@@ -105,7 +105,7 @@ class BotUserService
         // نوتیفیکیشن کاربر جدید
         if ($isNewUser) {
             try {
-                app(NotificationService::class)->userJoined($botUser, $platform);
+                // app(NotificationService::class)->userJoined($botUser, $platform);
             } catch (\Throwable $e) {
                 Log::warning('BotUserService: نوتیفیکیشن کاربر جدید ناموفق', [
                     'error' => $e->getMessage(),

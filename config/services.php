@@ -35,4 +35,9 @@ return [
         ],
     ],
 
+    'ytdlp' => [
+        'cookies_path' => env('YTDLP_COOKIES_PATH'),
+        'pot_base_url' => env('YTDLP_POT_BASE_URL'),
+    ],
+
 ];

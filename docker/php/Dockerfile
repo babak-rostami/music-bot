@@ -16,6 +16,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libwebp-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# --- yt-dlp: برای دانلود صدا از یوتیوب/ساندکلاد (باینری standalone، بدون نیاز به پایتون) ---
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+    && chmod +x /usr/local/bin/yt-dlp
+
+# --- Deno: JS runtime موردنیاز yt-dlp برای حل چالش امضای یوتیوب ---
+RUN curl -fsSL https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip -o /tmp/deno.zip \
+    && unzip -o /tmp/deno.zip -d /usr/local/bin \
+    && chmod +x /usr/local/bin/deno \
+    && rm /tmp/deno.zip
+
+# --- پلاگین bgutil-ytdlp-pot-provider: برای گرفتن PO Token و کاهش خطای «Sign in to confirm you're not a bot» ---
+RUN mkdir -p /opt/yt-dlp-plugins \
+    && curl -L https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/latest/download/bgutil-ytdlp-pot-provider.zip -o /tmp/bgutil-pot.zip \
+    && unzip -o /tmp/bgutil-pot.zip -d /opt/yt-dlp-plugins \
+    && rm /tmp/bgutil-pot.zip
+
 # --- PHP extensions ---
 # gd  : پردازش تصویر (با WebP)
 # ftp : درایور FTP فلای‌سیستم لاراول

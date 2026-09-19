@@ -94,7 +94,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
                 'error'   => $error,
             ]);
 
-            $song->update([$fileIdColumn => null]);
+            // $song->update([$fileIdColumn => null]);
         }
 
         // ─────────────────────────────────────────────────
@@ -169,7 +169,7 @@ class ProcessMusicDownloadJob implements ShouldQueue
             $displayText = $song->lyrics;
 
             if (count($lines) > 3) {
-                $displayText = implode("\n", array_slice($lines, 0, 3)) . "\n...";
+                $displayText = implode("\n", array_slice($lines, 0, 10)) . "\n...";
 
                 $baseUrl = $song->show_in_saz_site == 1 ? "https://saz.becharkh.com/songs/" : "https://music.becharkh.com/songs/";
                 $url = $baseUrl . $song->slug;

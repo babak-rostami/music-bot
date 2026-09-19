@@ -16,8 +16,8 @@
 @push('styles')
     <style>
         /**
-                                                                     * استایل‌های کمکی آپلودر کاور
-                                                                     */
+                                                                                 * استایل‌های کمکی آپلودر کاور
+                                                                                 */
 
         [data-cover-uploader] [data-cover-dropzone] {
             -webkit-user-select: none;
@@ -92,7 +92,8 @@
                                 class="text-red-500">*</span></label>
                         <input type="text" name="title" value="{{ old('title') }}" placeholder="مثلاً: بارون"
                             class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition {{ $errors->has('title') ? 'border-red-500' : '' }}">
-                        @error('title') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                        @error('title')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                     </div>
 
                     <div>
@@ -101,7 +102,8 @@
                         <input type="text" name="artist_name" value="{{ old('artist_name') }}"
                             placeholder="مثلاً: سروش هیوه"
                             class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition {{ $errors->has('artist_name') ? 'border-red-500' : '' }}">
-                        @error('artist_name') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                        @error('artist_name')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                     </div>
 
                     <div>
@@ -110,7 +112,8 @@
                         <input required type="url" name="source_url" value="{{ old('source_url') }}" dir="ltr"
                             placeholder="https://..."
                             class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition {{ $errors->has('source_url') ? 'border-red-500' : '' }}">
-                        @error('source_url') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                        @error('source_url')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                     </div>
 
                     <div>
@@ -162,7 +165,8 @@
                             <input type="url" name="download_link_128" value="{{ old('download_link_128') }}" dir="ltr"
                                 placeholder="https://..."
                                 class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition {{ $errors->has('download_link_128') ? 'border-red-500' : '' }}">
-                            @error('download_link_128') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                            @error('download_link_128')
+                            <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                         </div>
 
                         <div>
@@ -170,7 +174,8 @@
                             <input type="url" name="download_link_320" value="{{ old('download_link_320') }}" dir="ltr"
                                 placeholder="https://..."
                                 class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition {{ $errors->has('download_link_320') ? 'border-red-500' : '' }}">
-                            @error('download_link_320') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                            @error('download_link_320')
+                            <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                         </div>
                     </div>
 
@@ -218,7 +223,33 @@
                         <input type="url" name="aparat_link" value="{{ old('aparat_link') }}" dir="ltr"
                             placeholder="https://www.aparat.com/..."
                             class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition {{ $errors->has('aparat_link') ? 'border-red-500' : '' }}">
-                        @error('aparat_link') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                        @error('aparat_link')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                    </div>
+                </div>
+
+                <div class="bg-rose-50/40 rounded-xl p-4 space-y-4">
+                    <p class="text-xs font-semibold text-rose-700 uppercase">🎵 منابع جایگزین (در صورت خرابی لینک اصلی)</p>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1.5">لینک یوتیوب</label>
+                        <input type="url" name="youtube_link" value="{{ old('youtube_link') }}" dir="ltr"
+                            placeholder="https://www.youtube.com/watch?v=..."
+                            class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition">
+                    </div>
+
+                    {{-- <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1.5">لینک اسپاتیفای</label>
+                        <input type="url" name="spotify_link" value="{{ old('spotify_link') }}" dir="ltr"
+                            placeholder="https://open.spotify.com/track/..."
+                            class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition">
+                    </div> --}}
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1.5">لینک ساندکلاد</label>
+                        <input type="url" name="soundcloud_link" value="{{ old('soundcloud_link') }}" dir="ltr"
+                            placeholder="https://soundcloud.com/..."
+                            class="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition">
                     </div>
                 </div>
             </div>

@@ -4,24 +4,17 @@ namespace App\Services;
 
 use App\Models\Song;
 use App\Models\SongDownloadLink;
+use App\Services\Downloaders\SoundcloudDownloadService;
+// use App\Services\Downloaders\SpotifyDownloadService;
+use App\Services\Downloaders\YoutubeDownloadService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class SongFileService
 {
-    /**
-     * لیست کیفیت‌ها به ترتیب اولویت (از بالا به پایین)
-     */
     protected array $qualityPriority = ['320', '128'];
 
-    /**
-     * گرفتن فایل آیدی کش شده برای پلتفرم مشخص
-     * اول کیفیت 320 رو چک می‌کنه، بعد 128
-     *
-     * @param  string  $platform  مثلا telegram یا bale
-     * @return array{file_id: string, fileIdColumn: string, quality: string}|null
-     */
     public function getCachedFileId(Song $song, string $platform): ?array
     {
         foreach ($this->qualityPriority as $quality) {
@@ -46,15 +39,20 @@ class SongFileService
     }
 
     /**
-     * دانلود آهنگ از بهترین لینک موجود
-     * اول کیفیت 320 رو امتحان می‌کنه بعد 128
-     * هر بار که یه لینک موفق دانلود بشه، priority اش 1 دونه زیاد میشه
-     * اگه دانلود شکست بخوره، priority اون لینک 0 میشه (ریست)
+     * ترتیب: لینک‌های دانلود ذخیره‌شده → یوتیوب → ساندکلاد → اسپاتیفای
      *
-     * @param  string  $tempDirectory  مثلا "temp/abc-123"
-     * @return array{path: string, quality: string, link_id: int}|null
+     * @return array{path: string, quality: string, link_id: ?int}|null
      */
     public function downloadBestSong(Song $song, string $tempDirectory): ?array
+    {
+        return $this->downloadFromStoredLinks($song, $tempDirectory)
+            ?? $this->downloadFromExternalSources($song, $tempDirectory);
+    }
+
+    /**
+     * لینک‌های ثبت‌شده توی جدول song_download_links (همون منطق قبلی)
+     */
+    protected function downloadFromStoredLinks(Song $song, string $tempDirectory): ?array
     {
         $links = $song->downloadLinks()
             ->get(['id', 'quality', 'download_url', 'priority'])
@@ -94,16 +92,13 @@ class SongFileService
                 ];
             }
 
-            // شکست خورد → priority رو ریست کن به 0
-            // مستقیم از query builder استفاده می‌کنیم تا مطمئن بشیم آپدیت میشه
-            $updated = SongDownloadLink::where('id', $link->id)
-                ->update(['priority' => 0]);
+            $updated = SongDownloadLink::where('id', $link->id)->update(['priority' => 0]);
 
             Log::warning('دانلود شکست خورد، priority ریست شد', [
-                'song_id'         => $song->id,
-                'link_id'         => $link->id,
-                'quality'         => $link->quality,
-                'rows_affected'   => $updated
+                'song_id'       => $song->id,
+                'link_id'       => $link->id,
+                'quality'       => $link->quality,
+                'rows_affected' => $updated,
             ]);
         }
 
@@ -111,10 +106,57 @@ class SongFileService
     }
 
     /**
-     * دانلود واقعی فایل از یه URL
-     * اگه موفق بود مسیر فایل رو برمی‌گردونه
-     * اگه شکست خورد null برمی‌گردونه
+     * وقتی هیچ‌کدام از لینک‌های ذخیره‌شده جواب نداد، آخرین راه‌حل: یوتیوب → ساندکلاد → اسپاتیفای
      */
+    protected function downloadFromExternalSources(Song $song, string $tempDirectory): ?array
+    {
+        $sources = [
+            ['column' => 'youtube_link',    'service' => YoutubeDownloadService::class],
+            ['column' => 'soundcloud_link', 'service' => SoundcloudDownloadService::class],
+            // ['column' => 'spotify_link',    'service' => SpotifyDownloadService::class],
+        ];
+
+        $fullPath = storage_path("app/private/{$tempDirectory}");
+        if (! is_dir($fullPath)) {
+            mkdir($fullPath, 0755, true);
+        }
+
+        foreach ($sources as $source) {
+            $url = $song->{$source['column']};
+
+            if (empty($url)) {
+                continue;
+            }
+
+            try {
+                $downloader = app($source['service']);
+                $path = $downloader->download($url, $fullPath);
+            } catch (\Throwable $e) {
+                Log::error('External source download exception', [
+                    'song_id' => $song->id,
+                    'source'  => $source['column'],
+                    'error'   => $e->getMessage(),
+                ]);
+                $path = null;
+            }
+
+            if ($path !== null) {
+                return [
+                    'path'    => $path,
+                    'quality' => '320',
+                    'link_id' => null,
+                ];
+            }
+
+            Log::warning('دانلود از منبع خارجی شکست خورد', [
+                'song_id' => $song->id,
+                'source'  => $source['column'],
+            ]);
+        }
+
+        return null;
+    }
+
     protected function downloadSong(string $url, string $dir): ?string
     {
         $path = storage_path("app/private/{$dir}/original.mp3");
@@ -124,7 +166,6 @@ class SongFileService
             mkdir($directory, 0755, true);
         }
 
-        // فایل قدیمی رو پاک کن اگه هست
         if (file_exists($path)) {
             @unlink($path);
         }
@@ -132,9 +173,7 @@ class SongFileService
         $stream = @fopen($path, 'w');
 
         if ($stream === false) {
-            Log::error('نتوانست فایل را برای نوشتن باز کند', [
-                'path' => $path,
-            ]);
+            Log::error('نتوانست فایل را برای نوشتن باز کند', ['path' => $path]);
             return null;
         }
 
@@ -146,31 +185,25 @@ class SongFileService
                     'Accept-Language' => 'fa-IR,fa;q=0.9,en;q=0.5',
                 ])
                 ->timeout(300)
-                ->connectTimeout(15)  // اتصال اولیه 15 ثانیه
+                ->connectTimeout(15)
                 ->withOptions(['sink' => $stream])
                 ->get($url);
         } catch (\Throwable $e) {
-            // stream رو اگه هنوز بازه ببند
             if (is_resource($stream)) {
                 @fclose($stream);
             }
 
             $this->cleanupFailedDownload($path);
 
-            Log::error('خطا در دانلود آهنگ (exception)', [
-                'url'   => $url,
-                'error' => $e->getMessage(),
-            ]);
+            Log::error('خطا در دانلود آهنگ (exception)', ['url' => $url, 'error' => $e->getMessage()]);
 
             return null;
         }
 
-        // stream رو بعد از request ببند (حتی اگه Guzzle خودش بسته باشه)
         if (is_resource($stream)) {
             @fclose($stream);
         }
 
-        // چک وضعیت response
         if (! isset($response) || ! $response->successful()) {
             $this->cleanupFailedDownload($path);
             Log::warning('دانلود ناموفق - وضعیت نامعتبر', [
@@ -180,13 +213,12 @@ class SongFileService
             return null;
         }
 
-        // چک کن فایل واقعا دانلود شده و خالی نیست
         if (! file_exists($path) || filesize($path) < 1024) {
             $this->cleanupFailedDownload($path);
             Log::warning('فایل دانلود شده خالی یا نامعتبر است', [
-                'url'      => $url,
-                'size'     => file_exists($path) ? filesize($path) : 0,
-                'exists'   => file_exists($path),
+                'url'    => $url,
+                'size'   => file_exists($path) ? filesize($path) : 0,
+                'exists' => file_exists($path),
             ]);
             return null;
         }
@@ -194,9 +226,6 @@ class SongFileService
         return $path;
     }
 
-    /**
-     * پاک کردن فایل دانلود نشده
-     */
     protected function cleanupFailedDownload(string $path): void
     {
         if (file_exists($path)) {
