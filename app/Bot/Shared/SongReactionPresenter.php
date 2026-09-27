@@ -1,13 +1,12 @@
 <?php
 
-namespace App\Bot\Telegram\Support;
+namespace App\Bot\Shared;
 
 class SongReactionPresenter
 {
     public static function messageText(): string
     {
-        return "🎧 این آهنگ چطور بود؟\n\n" .
-            "نظرت رو با یه لایک یا دیس لایک بگو 👇";
+        return "🎧 این آهنگ چطور بود؟\nنظرت رو با یه لایک یا دیس‌لایک بهمون بگو 👇";
     }
 
     public static function keyboard(int $songId, int $likes, int $dislikes, ?string $userReaction): array
@@ -21,19 +20,14 @@ class SongReactionPresenter
         ]];
     }
 
-    /**
-     * برای این‌که عدد زیاد از عرض دکمه بیرون نزنه: 12500 → 12.5K ، 2000000 → 2M
-     */
     public static function formatCount(int $count): string
     {
         if ($count >= 1_000_000) {
             return rtrim(rtrim(number_format($count / 1_000_000, 1), '0'), '.') . 'M';
         }
-
         if ($count >= 1000) {
             return rtrim(rtrim(number_format($count / 1000, 1), '0'), '.') . 'K';
         }
-
         return (string) $count;
     }
 }

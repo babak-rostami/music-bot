@@ -2,12 +2,13 @@
 
 namespace App\Bot\Telegram;
 
+use App\Bot\Shared\MessageProcessorInterface;
 use App\Bot\Telegram\Commands\SearchCommand;
 use App\Bot\Telegram\Commands\StartCommand;
 use App\Bot\Telegram\Contracts\CommandHandlerInterface;
 use App\Bot\Telegram\Services\TelegramService;
 
-class MessageProcessor
+class MessageProcessor implements MessageProcessorInterface
 {
     /**
      * @var array<CommandHandlerInterface>

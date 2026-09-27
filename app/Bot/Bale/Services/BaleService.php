@@ -2,6 +2,7 @@
 
 namespace App\Bot\Bale\Services;
 
+use App\Bot\Shared\BotApiInterface;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -9,7 +10,7 @@ use Illuminate\Support\Facades\Log;
  * سرویس ارتباط با API بله
  * دقیقاً مشابه TelegramService با همان ساختار متدها
  */
-class BaleService
+class BaleService implements BotApiInterface
 {
     protected string $apiUrl;
     private string $caption;
@@ -19,6 +20,11 @@ class BaleService
         // ✅ تصحیح شد: tapi.bale.ai (نه api.bale.ai/v1/bots/)
         $this->apiUrl = 'https://tapi.bale.ai/bot' . config('telegram.bale_bot_token');
         $this->caption = "ربات آهنگ یاب : @download_music_bot";
+    }
+
+    public function platform(): string
+    {
+        return 'bale';
     }
 
     /**

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Bot\Bale\Services;
+namespace App\Bot\Shared;
 
 use App\Helpers\SongSlugHelper;
 use App\Jobs\SendBroadcastMessageJob;
@@ -15,149 +15,157 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
-class BaleAdminService
+class BotAdminService
 {
-    public function __construct(
-        private BaleService $bale,
-        private ImageUploadService $images,
-    ) {}
+    public function __construct(private ImageUploadService $images) {}
 
-    public function isAdmin(int $userId): bool
+    // ─────────────────────────────────────────────────
+    // API عمومی
+    // ─────────────────────────────────────────────────
+
+    public function isAdmin(BotApiInterface $bot, int $userId): bool
     {
-        $adminId = config('telegram.bale_admin_id');
+        $adminId = $bot->platform() === 'bale'
+            ? config('telegram.bale_admin_id')
+            : config('telegram.telegram_admin_id');
+
         return $adminId && (string) $userId === (string) $adminId;
     }
 
-    public function hasActiveFlow(int $userId): bool
+    public function hasActiveFlow(BotApiInterface $bot, int $userId): bool
     {
-        return $this->getFlow($userId) !== null;
+        return $this->getFlow($bot, $userId) !== null;
     }
 
-    public function tryStartCommand(array $message): bool
+    public function tryStartCommand(BotApiInterface $bot, array $message): bool
     {
         $userId = $message['from']['id'];
         $chatId = $message['chat']['id'];
         $text   = trim($message['text'] ?? '');
 
         return match ($text) {
-            '/new-song'     => $this->startNewSong($userId, $chatId),
-            '/send-message' => $this->startSendMessage($userId, $chatId),
-            '/broadcast'    => $this->startBroadcast($userId, $chatId),
+            '/new-song'     => $this->startNewSong($bot, $userId, $chatId),
+            '/send-message' => $this->startSendMessage($bot, $userId, $chatId),
+            '/broadcast'    => $this->startBroadcast($bot, $userId, $chatId),
             default         => false,
         };
     }
 
-    public function handleMessage(array $message): void
+    public function handleMessage(BotApiInterface $bot, array $message): void
     {
         $userId = $message['from']['id'];
-        $flow   = $this->getFlow($userId);
+        $flow   = $this->getFlow($bot, $userId);
 
         if (!$flow) {
             return;
         }
 
         if (trim($message['text'] ?? '') === '/cancel') {
-            $this->cancel($userId, $message['chat']['id']);
+            $this->cancel($bot, $userId, $message['chat']['id']);
             return;
         }
 
         match ($flow['flow']) {
-            'new_song'     => $this->handleNewSongStep($message, $flow),
-            'send_message' => $this->handleSendMessageStep($message, $flow),
-            'broadcast'    => $this->handleBroadcastStep($message, $flow),
+            'new_song'     => $this->handleNewSongStep($bot, $message, $flow),
+            'send_message' => $this->handleSendMessageStep($bot, $message, $flow),
+            'broadcast'    => $this->handleBroadcastStep($bot, $message, $flow),
             default        => null,
         };
     }
 
-    public function handleCallback(array $callback): void
+    public function handleCallback(BotApiInterface $bot, array $callback): void
     {
         $userId    = $callback['from']['id'];
         $chatId    = $callback['message']['chat']['id'];
         $messageId = $callback['message']['message_id'];
         $data      = $callback['data'] ?? '';
 
-        $this->bale->answerCallbackQuery($callback['id']);
+        $bot->answerCallbackQuery($callback['id']);
 
         if ($data === 'admin_cancel') {
-            $this->cancel($userId, $chatId, $messageId);
+            $this->cancel($bot, $userId, $chatId, $messageId);
             return;
         }
 
-        $flow = $this->getFlow($userId);
+        $flow = $this->getFlow($bot, $userId);
         if (!$flow) {
             return;
         }
 
         match ($flow['flow']) {
-            'new_song'  => $this->handleNewSongCallback($callback, $flow),
-            'broadcast' => $this->handleBroadcastCallback($callback, $flow),
+            'new_song'  => $this->handleNewSongCallback($bot, $callback, $flow),
+            'broadcast' => $this->handleBroadcastCallback($bot, $callback, $flow),
             default     => null,
         };
     }
 
-    private function flowKey(int $userId): string
+    // ─────────────────────────────────────────────────
+    // Cache state + کمکی‌های نمایش/پاکسازی پیام
+    // ─────────────────────────────────────────────────
+
+    private function flowKey(BotApiInterface $bot, int $userId): string
     {
-        return "admin_flow:bale:{$userId}";
+        return "admin_flow:{$bot->platform()}:{$userId}";
     }
 
-    private function getFlow(int $userId): ?array
+    private function getFlow(BotApiInterface $bot, int $userId): ?array
     {
-        return Cache::get($this->flowKey($userId));
+        return Cache::get($this->flowKey($bot, $userId));
     }
 
-    private function setFlow(int $userId, array $flow): void
+    private function setFlow(BotApiInterface $bot, int $userId, array $flow): void
     {
-        Cache::put($this->flowKey($userId), $flow, now()->addMinutes(30));
+        Cache::put($this->flowKey($bot, $userId), $flow, now()->addMinutes(30));
     }
 
-    private function clearFlow(int $userId): void
+    private function clearFlow(BotApiInterface $bot, int $userId): void
     {
-        Cache::forget($this->flowKey($userId));
+        Cache::forget($this->flowKey($bot, $userId));
     }
 
-    private function prompt(int $userId, int|string $chatId, string $text, ?array $keyboard = null): void
+    private function prompt(BotApiInterface $bot, int $userId, int|string $chatId, string $text, ?array $keyboard = null): void
     {
-        $flow = $this->getFlow($userId);
+        $flow = $this->getFlow($bot, $userId);
 
         if ($flow && !empty($flow['prompt_message_id'])) {
-            $this->bale->deleteMessage($chatId, $flow['prompt_message_id']);
+            $bot->deleteMessage($chatId, $flow['prompt_message_id']);
         }
 
-        $response = $this->bale->sendMessage($chatId, $text, $keyboard ?? $this->cancelKeyboard());
+        $response = $bot->sendMessage($chatId, $text, $keyboard ?? $this->cancelKeyboard());
 
         if ($flow) {
             $flow['prompt_message_id'] = $response->successful() ? $response->json('result.message_id') : null;
-            $this->setFlow($userId, $flow);
+            $this->setFlow($bot, $userId, $flow);
         }
     }
 
-    private function finishWithMessage(int $userId, int|string $chatId, string $text): void
+    private function finishWithMessage(BotApiInterface $bot, int $userId, int|string $chatId, string $text): void
     {
-        $flow = $this->getFlow($userId);
+        $flow = $this->getFlow($bot, $userId);
 
         if ($flow && !empty($flow['prompt_message_id'])) {
-            $this->bale->deleteMessage($chatId, $flow['prompt_message_id']);
+            $bot->deleteMessage($chatId, $flow['prompt_message_id']);
         }
 
-        $this->clearFlow($userId);
-        $this->bale->sendMessage($chatId, $text);
+        $this->clearFlow($bot, $userId);
+        $bot->sendMessage($chatId, $text);
     }
 
-    private function cancel(int $userId, int|string $chatId, ?int $messageId = null): void
+    private function cancel(BotApiInterface $bot, int $userId, int|string $chatId, ?int $messageId = null): void
     {
-        $flow = $this->getFlow($userId);
+        $flow = $this->getFlow($bot, $userId);
 
         if (!empty($flow['data']['cover_temp_path']) && file_exists($flow['data']['cover_temp_path'])) {
             @unlink($flow['data']['cover_temp_path']);
         }
 
         $targetMessageId = $messageId ?? ($flow['prompt_message_id'] ?? null);
-        $this->clearFlow($userId);
+        $this->clearFlow($bot, $userId);
 
         if ($targetMessageId) {
-            $this->bale->editMessageText($chatId, $targetMessageId, '❌ عملیات لغو شد.', []);
+            $bot->editMessageText($chatId, $targetMessageId, '❌ عملیات لغو شد.', []);
         } else {
-            $this->bale->sendMessage($chatId, '❌ عملیات لغو شد.');
+            $bot->sendMessage($chatId, '❌ عملیات لغو شد.');
         }
     }
 
@@ -170,14 +178,14 @@ class BaleAdminService
     // فلو ۱: ساخت آهنگ
     // ═══════════════════════════════════════════════════
 
-    private function startNewSong(int $userId, int|string $chatId): bool
+    private function startNewSong(BotApiInterface $bot, int $userId, int|string $chatId): bool
     {
-        $this->setFlow($userId, ['flow' => 'new_song', 'step' => 'song_source', 'data' => []]);
-        $this->prompt($userId, $chatId, '🎵 آهنگ رو بفرست (فایل صوتی) یا لینک مستقیم دانلودش رو بفرست:');
+        $this->setFlow($bot, $userId, ['flow' => 'new_song', 'step' => 'song_source', 'data' => []]);
+        $this->prompt($bot, $userId, $chatId, '🎵 آهنگ رو بفرست (فایل صوتی) یا لینک مستقیم دانلودش رو بفرست:');
         return true;
     }
 
-    private function handleNewSongStep(array $message, array $flow): void
+    private function handleNewSongStep(BotApiInterface $bot, array $message, array $flow): void
     {
         $chatId = $message['chat']['id'];
         $userId = $message['from']['id'];
@@ -185,51 +193,51 @@ class BaleAdminService
 
         switch ($flow['step']) {
             case 'song_source':
-                $this->handleSongSourceStep($message, $flow);
+                $this->handleSongSourceStep($bot, $message, $flow);
                 return;
 
             case 'source_url':
                 $text = trim($message['text'] ?? '');
                 if ($text === '') {
-                    $this->prompt($userId, $chatId, 'آدرس منبع نمی‌تونه خالی باشه، دوباره وارد کن:');
+                    $this->prompt($bot, $userId, $chatId, 'آدرس منبع نمی‌تونه خالی باشه، دوباره وارد کن:');
                     return;
                 }
                 $data['source_url'] = $text;
-                $this->advanceNewSong($userId, $data, 'cover', $chatId, '🖼 حالا عکس کاور آهنگ رو بفرست:');
+                $this->advanceNewSong($bot, $userId, $data, 'cover', $chatId, '🖼 حالا عکس کاور آهنگ رو بفرست:');
                 return;
 
             case 'cover':
-                $this->handleCoverStep($message, $flow);
+                $this->handleCoverStep($bot, $message, $flow);
                 return;
 
             case 'title':
                 $text = trim($message['text'] ?? '');
                 if ($text === '') {
-                    $this->prompt($userId, $chatId, 'اسم آهنگ نمی‌تونه خالی باشه:');
+                    $this->prompt($bot, $userId, $chatId, 'اسم آهنگ نمی‌تونه خالی باشه:');
                     return;
                 }
                 $data['title'] = $text;
-                $this->advanceNewSong($userId, $data, 'artist', $chatId, '🎤 اسم خواننده رو وارد کن:');
+                $this->advanceNewSong($bot, $userId, $data, 'artist', $chatId, '🎤 اسم خواننده رو وارد کن:');
                 return;
 
             case 'artist':
                 $text = trim($message['text'] ?? '');
                 if ($text === '') {
-                    $this->prompt($userId, $chatId, 'اسم خواننده نمی‌تونه خالی باشه:');
+                    $this->prompt($bot, $userId, $chatId, 'اسم خواننده نمی‌تونه خالی باشه:');
                     return;
                 }
                 $data['artist_name'] = $text;
-                $this->advanceNewSong($userId, $data, 'lyrics', $chatId, '📝 متن آهنگ رو وارد کن:');
+                $this->advanceNewSong($bot, $userId, $data, 'lyrics', $chatId, '📝 متن آهنگ رو وارد کن:');
                 return;
 
             case 'lyrics':
                 $data['lyrics'] = trim($message['text'] ?? '') ?: null;
-                $this->setFlow($userId, ['flow' => 'new_song', 'step' => 'show_in_site', 'data' => $data]);
-                $this->prompt($userId, $chatId, '🌐 توی سایت نشون داده بشه؟', $this->showSiteKeyboard());
+                $this->setFlow($bot, $userId, ['flow' => 'new_song', 'step' => 'show_in_site', 'data' => $data]);
+                $this->prompt($bot, $userId, $chatId, '🌐 توی سایت نشون داده بشه؟', $this->showSiteKeyboard());
                 return;
 
             case 'show_in_site':
-                $this->prompt($userId, $chatId, 'لطفاً یکی از دکمه‌های بالا رو بزن.', $this->showSiteKeyboard());
+                $this->prompt($bot, $userId, $chatId, 'لطفاً یکی از دکمه‌های بالا رو بزن.', $this->showSiteKeyboard());
                 return;
         }
     }
@@ -245,13 +253,13 @@ class BaleAdminService
         ];
     }
 
-    private function advanceNewSong(int $userId, array $data, string $nextStep, int|string $chatId, string $promptText): void
+    private function advanceNewSong(BotApiInterface $bot, int $userId, array $data, string $nextStep, int|string $chatId, string $promptText): void
     {
-        $this->setFlow($userId, ['flow' => 'new_song', 'step' => $nextStep, 'data' => $data]);
-        $this->prompt($userId, $chatId, $promptText);
+        $this->setFlow($bot, $userId, ['flow' => 'new_song', 'step' => $nextStep, 'data' => $data]);
+        $this->prompt($bot, $userId, $chatId, $promptText);
     }
 
-    private function handleSongSourceStep(array $message, array $flow): void
+    private function handleSongSourceStep(BotApiInterface $bot, array $message, array $flow): void
     {
         $chatId = $message['chat']['id'];
         $userId = $message['from']['id'];
@@ -260,12 +268,12 @@ class BaleAdminService
         $fileId = $message['audio']['file_id'] ?? $message['document']['file_id'] ?? $message['voice']['file_id'] ?? null;
 
         if ($fileId) {
-            $this->prompt($userId, $chatId, '⏳ در حال دریافت و آماده‌سازی فایل...');
+            $this->prompt($bot, $userId, $chatId, '⏳ در حال دریافت و آماده‌سازی فایل...');
 
-            $mp3Path = $this->downloadAndConvertToMp3($fileId);
+            $mp3Path = $this->downloadAndConvertToMp3($bot, $fileId);
 
             if (!$mp3Path) {
-                $this->prompt($userId, $chatId, '❌ دریافت یا تبدیل فایل ناموفق بود. دوباره فایل رو بفرست یا لینک بده:');
+                $this->prompt($bot, $userId, $chatId, '❌ دریافت یا تبدیل فایل ناموفق بود. دوباره فایل رو بفرست یا لینک بده:');
                 return;
             }
 
@@ -274,8 +282,8 @@ class BaleAdminService
 
             if (!@rename($mp3Path, $finalPath)) {
                 @unlink($mp3Path);
-                Log::error('rename to public failed in bale admin new-song flow', ['target' => $finalPath]);
-                $this->prompt($userId, $chatId, '❌ ذخیره فایل نهایی توی public ناموفق بود (دسترسی نوشتن رو چک کن). دوباره امتحان کن:');
+                Log::error('rename to public failed in admin new-song flow', ['target' => $finalPath]);
+                $this->prompt($bot, $userId, $chatId, '❌ ذخیره فایل نهایی توی public ناموفق بود. دوباره امتحان کن:');
                 return;
             }
 
@@ -283,7 +291,7 @@ class BaleAdminService
             $data['download_link_320'] = "{$baseUrl}/{$publicName}.mp3";
             $data['source_url']        = $this->getSiteDomain($baseUrl);
 
-            $this->advanceNewSong($userId, $data, 'cover', $chatId, "✅ فایل دریافت شد.\n🖼 حالا عکس کاور آهنگ رو بفرست:");
+            $this->advanceNewSong($bot, $userId, $data, 'cover', $chatId, "✅ فایل دریافت شد.\n🖼 حالا عکس کاور آهنگ رو بفرست:");
             return;
         }
 
@@ -291,16 +299,16 @@ class BaleAdminService
 
         if ($text !== '' && filter_var($text, FILTER_VALIDATE_URL)) {
             $data['download_link_320'] = $text;
-            $this->advanceNewSong($userId, $data, 'source_url', $chatId, '🔗 آدرس منبع (source_url) رو وارد کن، مثلاً: mybia2music.com');
+            $this->advanceNewSong($bot, $userId, $data, 'source_url', $chatId, '🔗 آدرس منبع (source_url) رو وارد کن، مثلاً: mybia2music.com');
             return;
         }
 
-        $this->prompt($userId, $chatId, 'یا فایل صوتی بفرست یا یه لینک معتبر بفرست:');
+        $this->prompt($bot, $userId, $chatId, 'یا فایل صوتی بفرست یا یه لینک معتبر بفرست:');
     }
 
-    private function downloadAndConvertToMp3(string $fileId): ?string
+    private function downloadAndConvertToMp3(BotApiInterface $bot, string $fileId): ?string
     {
-        $file = $this->bale->getFile($fileId);
+        $file = $bot->getFile($fileId);
         if (!$file || empty($file['file_path'])) {
             return null;
         }
@@ -309,7 +317,7 @@ class BaleAdminService
         $sourceExt = strtolower(pathinfo($file['file_path'], PATHINFO_EXTENSION)) ?: 'bin';
         $rawPath   = public_path(".tmp-{$uuid}.{$sourceExt}");
 
-        if (!$this->bale->downloadFile($file['file_path'], $rawPath)) {
+        if (!$bot->downloadFile($file['file_path'], $rawPath)) {
             @unlink($rawPath);
             return null;
         }
@@ -329,7 +337,7 @@ class BaleAdminService
         @unlink($rawPath);
 
         if ($exit !== 0 || !file_exists($mp3Path)) {
-            Log::error('ffmpeg convert failed in bale admin new-song flow', ['output' => $lines]);
+            Log::error('ffmpeg convert failed in admin new-song flow', ['output' => $lines]);
             @unlink($mp3Path);
             return null;
         }
@@ -348,7 +356,7 @@ class BaleAdminService
         return $name;
     }
 
-    private function handleCoverStep(array $message, array $flow): void
+    private function handleCoverStep(BotApiInterface $bot, array $message, array $flow): void
     {
         $chatId = $message['chat']['id'];
         $userId = $message['from']['id'];
@@ -356,15 +364,15 @@ class BaleAdminService
 
         $photos = $message['photo'] ?? null;
         if (!$photos) {
-            $this->prompt($userId, $chatId, 'لطفاً یه عکس بفرست:');
+            $this->prompt($bot, $userId, $chatId, 'لطفاً یه عکس بفرست:');
             return;
         }
 
         $fileId = end($photos)['file_id'];
 
-        $file = $this->bale->getFile($fileId);
+        $file = $bot->getFile($fileId);
         if (!$file || empty($file['file_path'])) {
-            $this->prompt($userId, $chatId, '❌ دریافت عکس ناموفق بود، دوباره بفرست:');
+            $this->prompt($bot, $userId, $chatId, '❌ دریافت عکس ناموفق بود، دوباره بفرست:');
             return;
         }
 
@@ -376,16 +384,16 @@ class BaleAdminService
         $ext = strtolower(pathinfo($file['file_path'], PATHINFO_EXTENSION)) ?: 'jpg';
         $coverPath = "{$tempDir}/cover.{$ext}";
 
-        if (!$this->bale->downloadFile($file['file_path'], $coverPath)) {
-            $this->prompt($userId, $chatId, '❌ دریافت عکس ناموفق بود، دوباره بفرست:');
+        if (!$bot->downloadFile($file['file_path'], $coverPath)) {
+            $this->prompt($bot, $userId, $chatId, '❌ دریافت عکس ناموفق بود، دوباره بفرست:');
             return;
         }
 
         $data['cover_temp_path'] = $coverPath;
-        $this->advanceNewSong($userId, $data, 'title', $chatId, '🎧 اسم آهنگ رو وارد کن:');
+        $this->advanceNewSong($bot, $userId, $data, 'title', $chatId, '🎧 اسم آهنگ رو وارد کن:');
     }
 
-    private function handleNewSongCallback(array $callback, array $flow): void
+    private function handleNewSongCallback(BotApiInterface $bot, array $callback, array $flow): void
     {
         if ($flow['step'] !== 'show_in_site' || !in_array($callback['data'], ['admin_show_site_yes', 'admin_show_site_no'], true)) {
             return;
@@ -398,10 +406,10 @@ class BaleAdminService
 
         $data['show_in_saz_site'] = $callback['data'] === 'admin_show_site_yes' ? 1 : 0;
 
-        $this->finalizeNewSong($userId, $chatId, $messageId, $data);
+        $this->finalizeNewSong($bot, $userId, $chatId, $messageId, $data);
     }
 
-    private function finalizeNewSong(int $userId, int|string $chatId, int $messageId, array $data): void
+    private function finalizeNewSong(BotApiInterface $bot, int $userId, int|string $chatId, int $messageId, array $data): void
     {
         try {
             $slug = SongSlugHelper::make($data['title'] . ' ' . $data['artist_name']);
@@ -450,18 +458,18 @@ class BaleAdminService
                 @unlink($data['cover_temp_path']);
             }
 
-            $this->clearFlow($userId);
+            $this->clearFlow($bot, $userId);
 
-            $this->bale->editMessageText(
+            $bot->editMessageText(
                 $chatId,
                 $messageId,
                 "✅ آهنگ با موفقیت ثبت شد!\n\n🎧 {$song->title} - {$song->artist_name}\n🆔 شناسه: {$song->id}",
                 []
             );
         } catch (\Throwable $e) {
-            Log::error('Admin new-song flow failed (bale)', ['error' => $e->getMessage()]);
-            $this->clearFlow($userId);
-            $this->bale->editMessageText($chatId, $messageId, '❌ خطا در ثبت آهنگ: ' . $e->getMessage(), []);
+            Log::error('Admin new-song flow failed', ['error' => $e->getMessage()]);
+            $this->clearFlow($bot, $userId);
+            $bot->editMessageText($chatId, $messageId, '❌ خطا در ثبت آهنگ: ' . $e->getMessage(), []);
         }
     }
 
@@ -475,14 +483,14 @@ class BaleAdminService
     // فلو ۲: پیام به یک کاربر
     // ═══════════════════════════════════════════════════
 
-    private function startSendMessage(int $userId, int|string $chatId): bool
+    private function startSendMessage(BotApiInterface $bot, int $userId, int|string $chatId): bool
     {
-        $this->setFlow($userId, ['flow' => 'send_message', 'step' => 'user_id', 'data' => []]);
-        $this->prompt($userId, $chatId, '🆔 شناسه کاربر (user_id) رو وارد کن:');
+        $this->setFlow($bot, $userId, ['flow' => 'send_message', 'step' => 'user_id', 'data' => []]);
+        $this->prompt($bot, $userId, $chatId, '🆔 شناسه کاربر (user_id) رو وارد کن:');
         return true;
     }
 
-    private function handleSendMessageStep(array $message, array $flow): void
+    private function handleSendMessageStep(BotApiInterface $bot, array $message, array $flow): void
     {
         $chatId = $message['chat']['id'];
         $userId = $message['from']['id'];
@@ -492,50 +500,55 @@ class BaleAdminService
             $target = trim($message['text'] ?? '');
 
             if (!ctype_digit($target)) {
-                $this->prompt($userId, $chatId, 'شناسه باید فقط عدد باشه، دوباره وارد کن:');
+                $this->prompt($bot, $userId, $chatId, 'شناسه باید فقط عدد باشه، دوباره وارد کن:');
                 return;
             }
 
-            if (!BotUser::bale()->where('user_id', $target)->exists()) {
-                $this->prompt($userId, $chatId, '❌ کاربری با این شناسه توی کاربران بله پیدا نشد. دوباره وارد کن:');
+            $exists = $bot->platform() === 'bale'
+                ? BotUser::bale()->where('user_id', $target)->exists()
+                : BotUser::telegram()->where('user_id', $target)->exists();
+
+            if (!$exists) {
+                $platformLabel = $bot->platform() === 'bale' ? 'بله' : 'تلگرام';
+                $this->prompt($bot, $userId, $chatId, "❌ کاربری با این شناسه توی کاربران {$platformLabel} پیدا نشد. دوباره وارد کن:");
                 return;
             }
 
             $data['target_user_id'] = $target;
-            $this->advanceSendMessage($userId, $data, $chatId, '✍️ حالا پیامی که می‌خوای براش بفرستی رو الان ارسال کن (متن، عکس، ویدیو یا هرچی):');
+            $this->advanceSendMessage($bot, $userId, $data, $chatId, '✍️ حالا پیامی که می‌خوای براش بفرستی رو الان ارسال کن (متن، عکس، ویدیو یا هرچی):');
             return;
         }
 
         if ($flow['step'] === 'await_message') {
             $targetUserId = $data['target_user_id'];
-            $response = $this->bale->copyMessage($chatId, $message['message_id'], $targetUserId);
+            $response = $bot->copyMessage($chatId, $message['message_id'], $targetUserId);
 
             if ($response->successful()) {
-                $this->finishWithMessage($userId, $chatId, "✅ پیام برای کاربر {$targetUserId} ارسال شد.");
+                $this->finishWithMessage($bot, $userId, $chatId, "✅ پیام برای کاربر {$targetUserId} ارسال شد.");
             } else {
-                $this->finishWithMessage($userId, $chatId, '❌ ارسال ناموفق بود: ' . $response->json('description', 'خطای ناشناخته'));
+                $this->finishWithMessage($bot, $userId, $chatId, '❌ ارسال ناموفق بود: ' . $response->json('description', 'خطای ناشناخته'));
             }
         }
     }
 
-    private function advanceSendMessage(int $userId, array $data, int|string $chatId, string $promptText): void
+    private function advanceSendMessage(BotApiInterface $bot, int $userId, array $data, int|string $chatId, string $promptText): void
     {
-        $this->setFlow($userId, ['flow' => 'send_message', 'step' => 'await_message', 'data' => $data]);
-        $this->prompt($userId, $chatId, $promptText);
+        $this->setFlow($bot, $userId, ['flow' => 'send_message', 'step' => 'await_message', 'data' => $data]);
+        $this->prompt($bot, $userId, $chatId, $promptText);
     }
 
     // ═══════════════════════════════════════════════════
     // فلو ۳: پیام همگانی
     // ═══════════════════════════════════════════════════
 
-    private function startBroadcast(int $userId, int|string $chatId): bool
+    private function startBroadcast(BotApiInterface $bot, int $userId, int|string $chatId): bool
     {
-        $this->setFlow($userId, ['flow' => 'broadcast', 'step' => 'await_message', 'data' => []]);
-        $this->prompt($userId, $chatId, '📢 پیامی که می‌خوای برای همه کاربرا ارسال بشه رو الان بفرست:');
+        $this->setFlow($bot, $userId, ['flow' => 'broadcast', 'step' => 'await_message', 'data' => []]);
+        $this->prompt($bot, $userId, $chatId, '📢 پیامی که می‌خوای برای همه کاربرا ارسال بشه رو الان بفرست:');
         return true;
     }
 
-    private function handleBroadcastStep(array $message, array $flow): void
+    private function handleBroadcastStep(BotApiInterface $bot, array $message, array $flow): void
     {
         if ($flow['step'] !== 'await_message') {
             return;
@@ -543,16 +556,20 @@ class BaleAdminService
 
         $chatId = $message['chat']['id'];
         $userId = $message['from']['id'];
-        $count  = BotUser::bale()->where('is_blocked', false)->count();
+        $count  = $bot->platform() === 'bale'
+            ? BotUser::bale()->where('is_blocked', false)->count()
+            : BotUser::telegram()->where('is_blocked', false)->count();
+
+        $platformLabel = $bot->platform() === 'bale' ? 'بله' : 'تلگرام';
 
         $data = [
             'source_chat_id'    => $chatId,
             'source_message_id' => $message['message_id'],
         ];
 
-        $this->setFlow($userId, ['flow' => 'broadcast', 'step' => 'confirm', 'data' => $data]);
+        $this->setFlow($bot, $userId, ['flow' => 'broadcast', 'step' => 'confirm', 'data' => $data]);
 
-        $this->prompt($userId, $chatId, "⚠️ این پیام به {$count} کاربر بله ارسال می‌شه. مطمئنی؟", [
+        $this->prompt($bot, $userId, $chatId, "⚠️ این پیام به {$count} کاربر {$platformLabel} ارسال می‌شه. مطمئنی؟", [
             [
                 ['text' => '✅ بله، ارسال کن', 'callback_data' => 'admin_broadcast_confirm'],
                 ['text' => '❌ لغو', 'callback_data' => 'admin_cancel'],
@@ -560,7 +577,7 @@ class BaleAdminService
         ]);
     }
 
-    private function handleBroadcastCallback(array $callback, array $flow): void
+    private function handleBroadcastCallback(BotApiInterface $bot, array $callback, array $flow): void
     {
         if ($flow['step'] !== 'confirm' || $callback['data'] !== 'admin_broadcast_confirm') {
             return;
@@ -571,19 +588,24 @@ class BaleAdminService
         $messageId = $callback['message']['message_id'];
         $data      = $flow['data'];
 
-        $userIds = BotUser::bale()->where('is_blocked', false)->pluck('user_id');
-        $rate    = max(1, (int) config('telegram.bale_broadcast_rate_per_second', 10));
+        $userIds = $bot->platform() === 'bale'
+            ? BotUser::bale()->where('is_blocked', false)->pluck('user_id')
+            : BotUser::telegram()->where('is_blocked', false)->pluck('user_id');
+
+        $rate = $bot->platform() === 'bale'
+            ? max(1, (int) config('telegram.bale_broadcast_rate_per_second', 10))
+            : max(1, (int) config('telegram.broadcast_rate_per_second', 25));
 
         foreach ($userIds as $index => $targetId) {
-            SendBroadcastMessageJob::dispatch($data['source_chat_id'], $data['source_message_id'], $targetId, 'bale')
+            SendBroadcastMessageJob::dispatch($data['source_chat_id'], $data['source_message_id'], $targetId, $bot->platform())
                 ->onQueue('broadcast')
                 ->delay(now()->addSeconds(intdiv($index, $rate)));
         }
 
-        $this->clearFlow($userId);
+        $this->clearFlow($bot, $userId);
 
         $seconds = $userIds->count() > 0 ? intdiv($userIds->count() - 1, $rate) + 1 : 0;
-        $this->bale->editMessageText(
+        $bot->editMessageText(
             $chatId,
             $messageId,
             "✅ ارسال به {$userIds->count()} کاربر توی صف قرار گرفت. تقریباً {$seconds} ثانیه طول می‌کشه.",

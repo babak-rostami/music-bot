@@ -5,8 +5,9 @@ namespace App\Bot\Bale;
 use App\Bot\Bale\Commands\BaleSearchCommand;
 use App\Bot\Bale\Commands\BaleStartCommand;
 use App\Bot\Bale\Services\BaleService;
+use App\Bot\Shared\MessageProcessorInterface;
 
-class MessageProcessor
+class MessageProcessor implements MessageProcessorInterface
 {
     protected array $handlers;
 

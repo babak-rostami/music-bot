@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Bot\Bale\Services\BaleService;
+use App\Bot\Shared\BotFactory;
 use App\Bot\Telegram\Services\TelegramService;
 use App\Services\MusicFinder\MusicFinderAccess;
 use App\Services\MusicFinder\MusicFinderResult;
@@ -38,11 +39,11 @@ class MusicFinderJob implements ShouldQueue
 
     public function handle(MusicFinderService $finder): void
     {
-        $service = $this->platform === 'bale' ? app(BaleService::class) : app(TelegramService::class);
+        $service = BotFactory::make($this->platform);
 
         $onQueued = fn() => $service->sendMessage(
             $this->chatId,
-            '⏳ همین الان یکی دیگه داره از این سرویس استفاده می‌کنه، چند لحظه صبر کن، نوبتت می‌رسه...'
+            '⏳ تعداد درخواست ها خیلی زیاد شده، لطفا چند ثانیه دیگه دوباره بفرست...'
         );
 
         try {

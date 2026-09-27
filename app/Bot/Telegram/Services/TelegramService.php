@@ -2,10 +2,11 @@
 
 namespace App\Bot\Telegram\Services;
 
+use App\Bot\Shared\BotApiInterface;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class TelegramService
+class TelegramService implements BotApiInterface
 {
     protected string $apiUrl;
     private string $caption;
@@ -15,6 +16,11 @@ class TelegramService
     {
         $this->apiUrl = 'https://api.telegram.org/bot' . config('telegram.bot_token');
         $this->caption = "ربات آهنگ یاب : @download_music_jangi_bot";
+    }
+
+    public function platform(): string
+    {
+        return 'telegram';
     }
 
     /**
