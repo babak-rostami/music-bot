@@ -4,9 +4,12 @@ namespace App\Bot\Telegram\Commands;
 
 use App\Bot\Telegram\Contracts\CommandHandlerInterface;
 use App\Bot\Telegram\Services\TelegramService;
+use App\Jobs\MusicFinderJob;
 use App\Models\Song;
 use App\Models\SongRequest;
 use App\Services\AdminNotifier;
+use App\Services\MusicFinder\MusicFinderAccess;
+use App\Services\MusicFinder\MusicFinderUsageService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -36,15 +39,22 @@ class SearchCommand implements CommandHandlerInterface
         if ($result->isEmpty()) {
             $request = $this->saveSongRequest($from, $chatId, $text);
 
-            $this->telegramService->sendMessage(
-                $chatId,
-                "✅ پیامت با موفقیت ثبت شد\n\n"
-                    . "⏰ آهنگ در صف دانلود قرار گرفت.\n\n"
-                    . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
-            );
+            $statusText = MusicFinderAccess::isTestMode()
+                ? "✅ پیامت با موفقیت ثبت شد\n\n⏰ آهنگ در صف دانلود قرار گرفت.\n\n💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!"
+                : "🔎 در حال جستجو، چند لحظه صبر کن...";
 
-            // نوتیفیکیشن به ادمین
+            $this->telegramService->sendMessage($chatId, $statusText);
+
             $this->adminNotifier->notifyNewSongRequest($request, 'telegram');
+
+            if (MusicFinderAccess::allowed('telegram', $from['id'])) {
+                if ($quotaMessage = MusicFinderUsageService::guard('telegram', $chatId)) {
+                    $this->telegramService->sendMessage($chatId, $quotaMessage);
+                } elseif (MusicFinderAccess::tryReserve('telegram', $chatId)) {
+                    MusicFinderJob::dispatch('telegram', $chatId, 'text', text: $text, originalQuery: $text)
+                        ->onQueue('music-finder');
+                }
+            }
 
             return;
         }
@@ -70,7 +80,7 @@ class SearchCommand implements CommandHandlerInterface
         ], now()->addMinutes(30));
 
         $buttons[] = [
-            ['text' => '❌ پیدا نکردی؟ کلیک کن ❌', 'callback_data' => "request_song_{$token}"]
+            ['text' => '❌💎 جستجوی پیشرفته 💎❌', 'callback_data' => "request_song_{$token}"]
         ];
 
         $this->telegramService->sendMessage(

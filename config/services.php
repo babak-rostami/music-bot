@@ -40,4 +40,18 @@ return [
         'pot_base_url' => env('YTDLP_POT_BASE_URL'),
     ],
 
+    'madeline' => [
+        'api_id'   => env('MADELINE_API_ID'),
+        'api_hash' => env('MADELINE_API_HASH'),
+    ],
+
+    'music_finder_bot' => [
+        'username'        => env('MUSIC_FINDER_BOT_USERNAME'),
+        'timeout'         => env('MUSIC_FINDER_TIMEOUT', 40),
+        'enabled_for_all' => env('MUSIC_FINDER_ENABLED_FOR_ALL', false),
+        'min_gap_seconds' => env('MUSIC_FINDER_MIN_GAP_SECONDS', 3),
+        'free_requests_limit'        => env('MUSIC_FINDER_FREE_LIMIT', 3),
+        'free_requests_window_hours' => env('MUSIC_FINDER_FREE_WINDOW_HOURS', 12),
+    ],
+
 ];

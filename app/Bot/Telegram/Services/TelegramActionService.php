@@ -8,8 +8,11 @@ use App\Bot\Telegram\Actions\RequestSongAction;
 use App\Bot\Telegram\Actions\ShowDownloadOptionsAction;
 use App\Bot\Telegram\MessageProcessor;
 use App\Bot\Telegram\Support\SongReactionPresenter;
+use App\Jobs\MusicFinderJob;
 use App\Jobs\ProcessMusicDownloadJob;
 use App\Models\Song;
+use App\Services\MusicFinder\MusicFinderAccess;
+use App\Services\MusicFinder\MusicFinderUsageService;
 use App\Services\SongReactionService;
 use App\Services\SongUploadService;
 use Illuminate\Http\Request;
@@ -77,15 +80,36 @@ class TelegramActionService
             $this->forgetPendingMessage($userId);
             $this->forgetLastJoinMessage($userId);
 
-            if ($this->isMediaMessage($message)) {
-                $this->handleTelegramMediaMessage($message);
-                return;
+            $identifiableFileId = $message['audio']['file_id'] ?? $message['video']['file_id'] ?? $message['voice']['file_id'] ?? null;
+            if ($identifiableFileId) {
+                if (MusicFinderAccess::allowed('telegram', (int) $userId)) {
+                    $type = isset($message['audio']) ? 'audio' : (isset($message['video']) ? 'video' : 'voice');
+                    $this->dispatchMediaIdentification($chatId, $identifiableFileId, $type);
+                    if ($this->isMediaMessage($message)) {
+                        $this->handleTelegramMediaMessage($message);
+                        return;
+                    }
+                    return;
+                }
             }
+            // if ($this->isMediaMessage($message)) {
+            //     $this->handleTelegramMediaMessage($message);
+            //     return;
+            // }
 
-            if ($this->isInstaUrl($message)) {
-                $this->handleInstaUrl($message);
+            $text = trim($message['text'] ?? '');
+            if ($text !== '' && $this->isMusicFinderLink($text)) {
+                if (MusicFinderAccess::allowed('telegram', (int) $userId)) {
+                    $this->dispatchLinkIdentification($chatId, $text);
+                } else {
+                    $this->handleInstaUrl($message);
+                }
                 return;
             }
+            // if ($this->isInstaUrl($message)) {
+            //     $this->handleInstaUrl($message);
+            //     return;
+            // }
 
             $this->messageProcessor->process($message);
             return;
@@ -129,6 +153,96 @@ class TelegramActionService
             || isset($message['document']);
     }
 
+    private function isMusicFinderLink(string $text): bool
+    {
+        return (bool) preg_match('~(?:youtube\.com|youtu\.be|instagram\.com|tiktok\.com)~i', $text);
+    }
+
+    private function dispatchLinkIdentification(int|string $chatId, string $url): void
+    {
+        if ($quotaMessage = MusicFinderUsageService::guard('telegram', $chatId)) {
+            $this->telegramService->sendMessage($chatId, $quotaMessage);
+            return;
+        }
+
+        if (!MusicFinderAccess::tryReserve('telegram', $chatId)) {
+            $this->telegramService->sendMessage($chatId, '⏳ درخواست قبلی‌ات هنوز در حال پردازشه، صبر کن تموم بشه.');
+            return;
+        }
+
+        MusicFinderJob::dispatch('telegram', $chatId, 'link', text: $url)->onQueue('music-finder');
+    }
+
+    private function dispatchMediaIdentification(int|string $chatId, string $fileId, string $type): void
+    {
+        if ($quotaMessage = MusicFinderUsageService::guard('telegram', $chatId)) {
+            $this->telegramService->sendMessage($chatId, $quotaMessage);
+            return;
+        }
+
+        if (!MusicFinderAccess::tryReserve('telegram', $chatId)) {
+            $this->telegramService->sendMessage($chatId, '⏳ درخواست قبلی‌ات هنوز در حال پردازشه، صبر کن تموم بشه.');
+            return;
+        }
+
+        $file = $this->telegramService->getFile($fileId);
+        if (!$file || empty($file['file_path'])) {
+            MusicFinderAccess::release('telegram', $chatId);
+            $this->telegramService->sendMessage($chatId, '❌ دریافت فایل ناموفق بود.');
+            return;
+        }
+
+        $tempDir = storage_path('app/private/music-finder-incoming/' . \Illuminate\Support\Str::uuid());
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        $ext = match ($type) {
+            'voice' => 'ogg',
+            'video' => 'mp4',
+            default => 'mp3'
+        };
+        $localPath = "{$tempDir}/incoming.{$ext}";
+
+        if (!$this->telegramService->downloadFile($file['file_path'], $localPath)) {
+            MusicFinderAccess::release('telegram', $chatId);
+            $this->telegramService->sendMessage($chatId, '❌ دریافت فایل ناموفق بود.');
+            return;
+        }
+
+        MusicFinderJob::dispatch('telegram', $chatId, 'media', mediaPath: $localPath, mediaType: $type)
+            ->onQueue('music-finder');
+    }
+
+    private function handleMusicFinderPick(array $callback): void
+    {
+        $token = str_replace('mf_pick_', '', $callback['data']);
+        $cached = Cache::pull("music_finder_btn:{$token}");
+
+        if (!$cached) {
+            $this->telegramService->answerCallbackQuery($callback['id'], '⏳ این گزینه منقضی شده، دوباره جستجو کن.');
+            return;
+        }
+
+        $chatId = $callback['message']['chat']['id'];
+
+        if ($quotaMessage = MusicFinderUsageService::guard('telegram', $chatId)) {
+            $this->telegramService->answerCallbackQuery($callback['id']);
+            $this->telegramService->sendMessage($chatId, $quotaMessage);
+            return;
+        }
+
+        if (!MusicFinderAccess::tryReserve('telegram', $chatId)) {
+            $this->telegramService->answerCallbackQuery($callback['id'], '⏳ درخواست قبلی‌ات هنوز در حال پردازشه.');
+            return;
+        }
+
+        $this->telegramService->answerCallbackQuery($callback['id'], '🔎 در حال آماده‌سازی...');
+
+        MusicFinderJob::dispatch('telegram', $chatId, 'select', sourceMessageId: $cached['message_id'], callbackData: $cached['data'])
+            ->onQueue('music-finder');
+    }
+
     private function isInstaUrl(array $message): bool
     {
         $text = $this->getMessageText($message);
@@ -145,14 +259,13 @@ class TelegramActionService
 
     private function handleInstaUrl(array $message): void
     {
-        $chatId = $message['chat']['id'];
-
-        $this->telegramService->sendMessage(
-            $chatId,
-            "✅ لینک اینستاگرام با موفقیت ثبت شد\n\n"
-                . "⏰ آهنگ در صف دانلود قرار گرفت.\n\n"
-                . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
-        );
+        // $chatId = $message['chat']['id'];
+        // $this->telegramService->sendMessage(
+        //     $chatId,
+        //     "✅ لینک اینستاگرام با موفقیت ثبت شد\n\n"
+        //         . "⏰ آهنگ در صف دانلود قرار گرفت.\n\n"
+        //         . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
+        // );
     }
 
     private function getMessageText(array $message): string
@@ -227,6 +340,10 @@ class TelegramActionService
             return;
         }
 
+        if (str_starts_with($data, 'mf_pick_')) {
+            $this->handleMusicFinderPick($callback);
+            return;
+        }
         // ۳. عضو هست → دکمه‌های مربوط به آهنگ رو هندل کن
         if (str_starts_with($data, 'song_')) {
             $songId = (int) str_replace('song_', '', $data);

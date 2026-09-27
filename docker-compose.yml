@@ -32,6 +32,11 @@ x-broadcast-worker: &broadcast-worker
   command: >
     php artisan queue:work --queue=broadcast --tries=1 --timeout=30 --max-jobs=500 --max-time=3600
 
+x-music-finder-worker: &music-finder-worker
+  <<: *queue-worker
+  command: >
+    php artisan queue:work --queue=music-finder --tries=1 --timeout=90 --max-jobs=200 --max-time=3600
+
 services:
   app:
     build:
@@ -49,6 +54,9 @@ services:
       music-network:
         aliases:
           - musicbot-app
+    environment:
+      - MADELINE_API_ID=${MADELINE_API_ID}
+      - MADELINE_API_HASH=${MADELINE_API_HASH}
 
   queue-download:
     <<: *download-worker
@@ -69,6 +77,10 @@ services:
   queue-broadcast:
     <<: *broadcast-worker
     container_name: musicbot-queue-broadcast
+
+  queue-music-finder:
+    <<: *music-finder-worker
+    container_name: musicbot-queue-music-finder
 
   scheduler:
     image: musicbot-app
@@ -101,6 +113,18 @@ services:
     image: brainicism/bgutil-ytdlp-pot-provider:latest
     container_name: musicbot-ytdlp-pot
     restart: unless-stopped
+    networks:
+      - music-network
+
+  madeline-daemon:
+    image: musicbot-app
+    container_name: musicbot-madeline-daemon
+    restart: unless-stopped
+    init: true
+    working_dir: /var/www
+    command: php madeline/daemon.php
+    volumes:
+      - ./:/var/www
     networks:
       - music-network
 

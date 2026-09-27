@@ -3,9 +3,12 @@
 namespace App\Bot\Bale\Commands;
 
 use App\Bot\Bale\Services\BaleService;
+use App\Jobs\MusicFinderJob;
 use App\Models\Song;
 use App\Models\SongRequest;
 use App\Services\AdminNotifier;
+use App\Services\MusicFinder\MusicFinderAccess;
+use App\Services\MusicFinder\MusicFinderUsageService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -35,14 +38,22 @@ class BaleSearchCommand
         if ($result->isEmpty()) {
             $request = $this->saveSongRequest($from, $chatId, $text);
 
-            $this->baleService->sendMessage(
-                $chatId,
-                "✅ پیامت با موفقیت ثبت شد\n\n"
-                    . "⏰ آهنگ در صف دانلود قرار گرفت.\n\n"
-                    . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
-            );
+            $statusText = MusicFinderAccess::isTestMode()
+                ? "✅ پیامت با موفقیت ثبت شد\n\n⏰ آهنگ در صف دانلود قرار گرفت.\n\n💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!"
+                : "🔎 در حال جستجو، چند لحظه صبر کن...";
+
+            $this->baleService->sendMessage($chatId, $statusText);
 
             $this->adminNotifier->notifyNewSongRequest($request, 'bale');
+
+            if (MusicFinderAccess::allowed('bale', $from['id'])) {
+                if ($quotaMessage = MusicFinderUsageService::guard('bale', $chatId)) {
+                    $this->baleService->sendMessage($chatId, $quotaMessage);
+                } elseif (MusicFinderAccess::tryReserve('bale', $chatId)) {
+                    MusicFinderJob::dispatch('bale', $chatId, 'text', text: $text, originalQuery: $text)
+                        ->onQueue('music-finder');
+                }
+            }
 
             return;
         }
@@ -67,7 +78,7 @@ class BaleSearchCommand
         ], now()->addMinutes(30));
 
         $buttons[] = [
-            ['text' => '❌ پیدا نکردی؟ کلیک کن ❌', 'callback_data' => "request_song_{$token}"]
+            ['text' => '❌💎 جستجوی پیشرفته 💎❌', 'callback_data' => "request_song_{$token}"]
         ];
 
         $this->baleService->sendMessage(

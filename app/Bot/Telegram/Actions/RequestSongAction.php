@@ -3,8 +3,11 @@
 namespace App\Bot\Telegram\Actions;
 
 use App\Bot\Telegram\Services\TelegramService;
+use App\Jobs\MusicFinderJob;
 use App\Models\SongRequest;
 use App\Services\AdminNotifier;
+use App\Services\MusicFinder\MusicFinderAccess;
+use App\Services\MusicFinder\MusicFinderUsageService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -44,21 +47,24 @@ class RequestSongAction
                 'platform'     => 'telegram'
             ]);
 
-            // پیام تأیید برای کاربر (پیام لیست آهنگ‌ها رو عوض می‌کنیم)
-            $this->telegram->editMessageText(
-                $chatId,
-                $messageId,
-                "✅ پیامت با موفقیت ثبت شد\n\n"
-                    . "⏰ آهنگ در صف دانلود قرار گرفت.\n\n"
-                    . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
-                [] // حذف دکمه‌ها
-            );
+            $statusText = MusicFinderAccess::isTestMode()
+                ? "✅ پیامت با موفقیت ثبت شد\n\n⏰ آهنگ در صف دانلود قرار گرفت.\n\n💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!"
+                : "🔎 در حال جستجو، چند لحظه صبر کن...";
 
-            // toast کوچک روی دکمه
+            $this->telegram->editMessageText($chatId, $messageId, $statusText, []);
+
             $this->telegram->answerCallbackQuery($callbackQueryId, '✅ درخواست ثبت شد!');
 
-            // نوتیفیکیشن به کانال ادمین
             $this->adminNotifier->notifyNewSongRequest($request, 'telegram');
+
+            if (MusicFinderAccess::allowed('telegram', $payload['from']['id'])) {
+                if ($quotaMessage = MusicFinderUsageService::guard('telegram', $chatId)) {
+                    $this->telegram->sendMessage($chatId, $quotaMessage);
+                } elseif (MusicFinderAccess::tryReserve('telegram', $chatId)) {
+                    MusicFinderJob::dispatch('telegram', $chatId, 'text', text: $payload['query'], originalQuery: $payload['query'])
+                        ->onQueue('music-finder');
+                }
+            }
         } catch (\Throwable $e) {
             Log::error('Failed to save song request', [
                 'error'   => $e->getMessage(),

@@ -8,6 +8,7 @@ use App\Bot\BotUserService;
 use App\Bot\NotificationService;
 use App\Models\ActivityLog;
 use App\Models\Song;
+use App\Services\MusicFinder\MusicFinderUsageService;
 use App\Services\SongFileService;
 use App\Services\SongReactionService;
 use Illuminate\Bus\Queueable;
@@ -233,6 +234,8 @@ class ProcessBaleMusicDownloadJob implements ShouldQueue
 
         $notifier->songSent($song, $this->chatId, $quality, 'bale', $userId);
         $botUserService->recordSuccessfulSend($userId, 'bale');
+
+        MusicFinderUsageService::recordDatabaseDelivery('bale', $this->chatId, $song->id);
     }
 
     private function sendReactionPrompt(BaleService $bale, SongReactionService $reactionService, Song $song, int $userId): void

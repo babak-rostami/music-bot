@@ -7,10 +7,13 @@ use App\Bot\Bale\MessageProcessor;
 use App\Bot\Bale\Support\SongReactionPresenter;
 use App\Bot\BotUserService;
 use App\Bot\NotificationService;
+use App\Jobs\MusicFinderJob;
 use App\Jobs\ProcessBaleMusicDownloadJob;
 use App\Models\Song;
 use App\Models\SongRequest;
 use App\Services\AdminNotifier;
+use App\Services\MusicFinder\MusicFinderAccess;
+use App\Services\MusicFinder\MusicFinderUsageService;
 use App\Services\SongReactionService;
 use App\Services\SongUploadService;
 use Illuminate\Http\Request;
@@ -79,13 +82,32 @@ class BaleActionService
             return;
         }
 
-        if ($this->isMediaMessage($message)) {
-            $this->handleMediaMessage($message);
-            return;
+        $identifiableFileId = $message['audio']['file_id'] ?? $message['video']['file_id'] ?? $message['voice']['file_id'] ?? null;
+        if ($identifiableFileId) {
+            if (MusicFinderAccess::allowed('bale', (int) $userId)) {
+                $type = isset($message['audio']) ? 'audio' : (isset($message['video']) ? 'video' : 'voice');
+                $this->dispatchMediaIdentification($chatId, $identifiableFileId, $type);
+
+                if ($this->isMediaMessage($message)) {
+                    $this->handleMediaMessage($message);
+                    return;
+                }
+                return;
+            }
         }
 
-        if ($this->isInstaUrl($message)) {
-            $this->handleInstaUrl($message);
+        // if ($this->isInstaUrl($message)) {
+        //     $this->handleInstaUrl($message);
+        //     return;
+        // }
+
+        $text = trim($message['text'] ?? '');
+        if ($text !== '' && $this->isMusicFinderLink($text)) {
+            if (MusicFinderAccess::allowed('bale', (int) $userId)) {
+                $this->dispatchLinkIdentification($chatId, $text);
+            } else {
+                $this->handleInstaUrl($message);
+            }
             return;
         }
 
@@ -119,29 +141,120 @@ class BaleActionService
         return (int) $matches[1];
     }
 
-    private function isInstaUrl(array $message): bool
-    {
-        $text = $this->getMessageText($message);
+    // private function isInstaUrl(array $message): bool
+    // {
+    //     $text = $this->getMessageText($message);
 
-        if ($text === '') {
-            return false;
-        }
+    //     if ($text === '') {
+    //         return false;
+    //     }
 
-        return preg_match(
-            '~(?:https?:\/\/)?(?:www\.)?(?:m\.)?(?:instagram\.com|instagr\.am)\/[^\s]+~iu',
-            $text
-        ) === 1;
-    }
+    //     return preg_match(
+    //         '~(?:https?:\/\/)?(?:www\.)?(?:m\.)?(?:instagram\.com|instagr\.am)\/[^\s]+~iu',
+    //         $text
+    //     ) === 1;
+    // }
 
     private function handleInstaUrl(array $message): void
     {
-        $chatId = $message['chat']['id'];
-        $this->baleService->sendMessage(
-            $chatId,
-            "✅ لینک اینستاگرام با موفقیت ثبت شد\n\n"
-                . "⏰ آهنگ در صف دانلود قرار گرفت.\n\n"
-                . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
-        );
+        // $chatId = $message['chat']['id'];
+        // $this->baleService->sendMessage(
+        //     $chatId,
+        //     "✅ لینک اینستاگرام با موفقیت ثبت شد\n\n"
+        //         . "⏰ آهنگ در صف دانلود قرار گرفت.\n\n"
+        //         . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
+        // );
+    }
+
+
+    private function isMusicFinderLink(string $text): bool
+    {
+        return (bool) preg_match('~(?:youtube\.com|youtu\.be|instagram\.com|tiktok\.com)~i', $text);
+    }
+
+    private function dispatchLinkIdentification(int|string $chatId, string $url): void
+    {
+        if ($quotaMessage = MusicFinderUsageService::guard('bale', $chatId)) {
+            $this->baleService->sendMessage($chatId, $quotaMessage);
+            return;
+        }
+
+        if (!MusicFinderAccess::tryReserve('bale', $chatId)) {
+            $this->baleService->sendMessage($chatId, '⏳ درخواست قبلی‌ات هنوز در حال پردازشه، صبر کن تموم بشه.');
+            return;
+        }
+
+        MusicFinderJob::dispatch('bale', $chatId, 'link', text: $url)->onQueue('music-finder');
+    }
+
+    private function dispatchMediaIdentification(int|string $chatId, string $fileId, string $type): void
+    {
+        if ($quotaMessage = MusicFinderUsageService::guard('bale', $chatId)) {
+            $this->baleService->sendMessage($chatId, $quotaMessage);
+            return;
+        }
+
+        if (!MusicFinderAccess::tryReserve('bale', $chatId)) {
+            $this->baleService->sendMessage($chatId, '⏳ درخواست قبلی‌ات هنوز در حال پردازشه، صبر کن تموم بشه.');
+            return;
+        }
+
+        $file = $this->baleService->getFile($fileId);
+        if (!$file || empty($file['file_path'])) {
+            MusicFinderAccess::release('bale', $chatId);
+            $this->baleService->sendMessage($chatId, '❌ دریافت فایل ناموفق بود.');
+            return;
+        }
+
+        $tempDir = storage_path('app/private/music-finder-incoming/' . \Illuminate\Support\Str::uuid());
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        $ext = match ($type) {
+            'voice' => 'ogg',
+            'video' => 'mp4',
+            default => 'mp3'
+        };
+        $localPath = "{$tempDir}/incoming.{$ext}";
+
+        if (!$this->baleService->downloadFile($file['file_path'], $localPath)) {
+            MusicFinderAccess::release('bale', $chatId);
+            $this->baleService->sendMessage($chatId, '❌ دریافت فایل ناموفق بود.');
+            return;
+        }
+
+        MusicFinderJob::dispatch('bale', $chatId, 'media', mediaPath: $localPath, mediaType: $type)
+            ->onQueue('music-finder');
+    }
+
+    private function handleMusicFinderPick(array $callback): void
+    {
+        $token = str_replace('mf_pick_', '', $callback['data']);
+        $cached = Cache::pull("music_finder_btn:{$token}");
+
+        if (!$cached) {
+            $this->baleService->answerCallbackQuery($callback['id'], '⏳ این گزینه منقضی شده، دوباره جستجو کن.');
+            return;
+        }
+
+        $chatId = $callback['message']['chat']['id'];
+
+        if ($quotaMessage = MusicFinderUsageService::guard('bale', $chatId)) {
+            $this->baleService->answerCallbackQuery($callback['id']);
+            $this->baleService->sendMessage($chatId, $quotaMessage);
+            return;
+        }
+
+        if (!MusicFinderAccess::tryReserve('bale', $chatId)) {
+            $this->baleService->answerCallbackQuery($callback['id'], '⏳ درخواست قبلی‌ات هنوز در حال پردازشه.');
+            return;
+        }
+
+        $this->baleService->answerCallbackQuery($callback['id'], '🔎 در حال آماده‌سازی...');
+
+        MusicFinderJob::dispatch('bale', $chatId, 'select', sourceMessageId: $cached['message_id'], callbackData: $cached['data'])
+            ->onQueue('music-finder');
     }
 
     private function getMessageText(array $message): string
@@ -176,12 +289,12 @@ class BaleActionService
 
         // کپی پیام به کانال کش بله (یا از forwardBaleMessage استفاده کنید)
         $this->baleService->forwardMessage($chatId, $messageId);
-        $this->baleService->sendMessage(
-            $chatId,
-            "✅ فایلی که فرستادی با موفقیت ثبت شد\n\n"
-                . "آهنگ توی صف دانلود قرار گرفت 🔎\n\n"
-                . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
-        );
+        // $this->baleService->sendMessage(
+        //     $chatId,
+        //     "✅ فایلی که فرستادی با موفقیت ثبت شد\n\n"
+        //         . "آهنگ توی صف دانلود قرار گرفت 🔎\n\n"
+        //         . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
+        // );
     }
 
     // ─────────────────────────────────────────────────
@@ -229,6 +342,10 @@ class BaleActionService
             return;
         }
 
+        if (str_starts_with($data, 'mf_pick_')) {
+            $this->handleMusicFinderPick($callback);
+            return;
+        }
         // ۳. دکمه‌های دانلود آهنگ
         if (str_starts_with($data, 'song_')) {
             $songId = (int) str_replace('song_', '', $data);
@@ -332,20 +449,20 @@ class BaleActionService
                 'platform'   => 'bale',
             ]);
 
-            $this->baleService->editMessageText(
-                $chatId,
-                $messageId,
-                "✅ پیام شما با موفقیت ثبت شد\n\n"
-                    . "🎵 آهنگ در صف دانلود قرار گرفت\n\n"
-                    . "💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!",
-                []
-            );
+            $statusText = MusicFinderAccess::isTestMode()
+                ? "✅ پیامت با موفقیت ثبت شد\n\n⏰ آهنگ در صف دانلود قرار گرفت.\n\n💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!"
+                : "🔎 در حال جستجو، چند لحظه صبر کن...";
+
+            $this->baleService->editMessageText($chatId, $messageId, $statusText, []);
 
             $this->baleService->answerCallbackQuery($callbackQueryId, '✅ درخواست ثبت شد!');
 
-            // ✅ نوتیفیکیشن درخواست آهنگ به ادمین
             $this->notifier->songRequest($payload['query'], $payload['from'], $payload['chat_id'], 'bale');
-            app(AdminNotifier::class)->notifyNewSongRequest($request, 'bale');
+
+            if (MusicFinderAccess::allowed('bale', $payload['from']['id']) && MusicFinderAccess::tryReserve('bale', $chatId)) {
+                MusicFinderJob::dispatch('bale', $chatId, 'text', text: $payload['query'], originalQuery: $payload['query'])
+                    ->onQueue('music-finder');
+            }
         } catch (\Throwable $e) {
             Log::error('Failed to save song request', ['error' => $e->getMessage()]);
             $this->notifier->error('ثبت درخواست آهنگ (بله)', $e->getMessage(), 'bale');

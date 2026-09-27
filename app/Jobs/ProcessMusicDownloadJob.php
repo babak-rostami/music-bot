@@ -8,6 +8,7 @@ use App\Bot\Telegram\Services\TelegramService;
 use App\Bot\Telegram\Support\SongReactionPresenter;
 use App\Models\ActivityLog;
 use App\Models\Song;
+use App\Services\MusicFinder\MusicFinderUsageService;
 use App\Services\SongFileService;
 use App\Services\SongReactionService;
 use Illuminate\Bus\Queueable;
@@ -210,6 +211,8 @@ class ProcessMusicDownloadJob implements ShouldQueue
 
         $notifier->songSent($song, $this->chatId, $quality, 'telegram', $userId);
         $botUserService->recordSuccessfulSend($userId, 'telegram');
+
+        MusicFinderUsageService::recordDatabaseDelivery('telegram', $this->chatId, $song->id);
     }
 
     private function sendReactionPrompt(TelegramService $telegram, SongReactionService $reactionService, Song $song, int $userId): void

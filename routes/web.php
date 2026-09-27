@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\SongSearchQueryController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\BotUserController;
 use App\Http\Controllers\Admin\CommentController;
+use App\Http\Controllers\Admin\MusicFinderRequestController;
 use App\Http\Controllers\TestController;
 use App\Http\Middleware\AdminMiddleware;
 use Illuminate\Support\Facades\Route;
@@ -83,5 +84,7 @@ Route::prefix('admin_page')->name('admin.')->group(function () {
         Route::delete('comments/bulk', [CommentController::class, 'bulkDestroy'])->name('comments.bulk-destroy');
         Route::resource('comments', CommentController::class)->only(['index', 'update', 'destroy']);
         Route::post('comments/{comment}/update-status', [CommentController::class, 'updateStatus'])->name('comments.update-status');
+
+        Route::get('music-finder-requests', [MusicFinderRequestController::class, 'index'])->name('music-finder-requests.index');
     });
 });

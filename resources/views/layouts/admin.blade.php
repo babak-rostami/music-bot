@@ -87,6 +87,12 @@
                         {{ request()->routeIs('admin.bot-users.index') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                     <span>👤</span> کاربران ربات
                 </a>
+
+                <a href="{{ route('admin.music-finder-requests.index') }}"
+                    class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
+        {{ request()->routeIs('admin.music-finder-requests.*') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                    <span>🎯</span> درخواست‌های آهنگ‌یاب
+                </a>
             </nav>
 
             {{-- خروج --}}

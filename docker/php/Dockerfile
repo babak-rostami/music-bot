@@ -2,7 +2,7 @@ FROM php:8.3-fpm
 
 # --- System packages ---
 # libwebp-dev / libjpeg / libpng / libfreetype  => برای GD با پشتیبانی WebP
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends libgmp-dev\
     git \
     unzip \
     curl \
@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg62-turbo-dev \
     libpng-dev \
     libwebp-dev \
+    && docker-php-ext-install gmp \
     && rm -rf /var/lib/apt/lists/*
 
 # --- yt-dlp: برای دانلود صدا از یوتیوب/ساندکلاد (باینری standalone، بدون نیاز به پایتون) ---
