@@ -15,8 +15,8 @@ class SongUploadService
         $bot->editMessageText($chatId, $messageId, '⏳ در حال آماده‌سازی فایل... 🎶', []);
 
         match ($bot->platform()) {
-            'bale'  => ProcessBaleMusicDownloadJob::dispatch($songId, $chatId, $messageId, null)->onQueue('download-music'),
-            default => ProcessMusicDownloadJob::dispatch($songId, $chatId, $messageId)->onQueue('download-music'),
+            'bale'  => ProcessBaleMusicDownloadJob::dispatch($songId, $chatId, $messageId, null),
+            default => ProcessMusicDownloadJob::dispatch($songId, $chatId, $messageId),
         };
     }
 }

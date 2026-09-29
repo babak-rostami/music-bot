@@ -112,7 +112,7 @@ class BotUserController extends Controller
                         $songId,
                         $chatId,
                         null
-                    )->onQueue('download-music');
+                    );
                 }
 
                 // ۲. ارسال پیام متنی تلگرام
@@ -126,7 +126,7 @@ class BotUserController extends Controller
                         $songId,
                         $chatId,
                         null
-                    )->onQueue('download-music');
+                    );
                 }
 
                 // ۲. ارسال پیام متنی بله

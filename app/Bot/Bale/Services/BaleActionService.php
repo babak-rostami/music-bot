@@ -75,9 +75,9 @@ class BaleActionService extends BaseBotActionService
         $messageId = $message['message_id'];
 
         $bot->forwardMessage($chatId, $messageId);
-        $bot->sendMessage(
-            $chatId,
-            "✅ فایلی که فرستادی با موفقیت ثبت شد\n\nآهنگ توی صف دانلود قرار گرفت 🔎\n\n💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!"
-        );
+        // $bot->sendMessage(
+        //     $chatId,
+        //     "✅ فایلی که فرستادی با موفقیت ثبت شد\n\nآهنگ توی صف دانلود قرار گرفت 🔎\n\n💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!"
+        // );
     }
 }

@@ -73,7 +73,7 @@ class SongRequestController extends Controller
                             $song->id,
                             $songRequest->chat_id,
                             null,
-                        )->onQueue('download-music');
+                        );
                         $this->telegramService->sendMessage(
                             $songRequest->chat_id,
                             '❤️آهنگی که میخواستی برات آپلود کردم'
@@ -83,7 +83,7 @@ class SongRequestController extends Controller
                             $song->id,
                             $songRequest->chat_id,
                             null,
-                        )->onQueue('download-music');
+                        );
                         $this->baleService->sendMessage(
                             $songRequest->chat_id,
                             '❤️آهنگی که میخواستی برات آپلود کردم'

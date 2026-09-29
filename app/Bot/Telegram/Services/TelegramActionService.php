@@ -74,9 +74,9 @@ class TelegramActionService extends BaseBotActionService
         $messageId = $message['message_id'];
 
         $bot->copyMessage($chatId, $messageId);
-        $bot->sendMessage(
-            $chatId,
-            "🎵 فایل فرستادی؟\n\nتوی صف جستجو قرار گرفت 🔎\nوقتی پیدا شد آهنگ رو همینجا برات ارسال میکنم 🫡⚡️\n"
-        );
+        // $bot->sendMessage(
+        //     $chatId,
+        //     "🎵 فایل فرستادی؟\n\nتوی صف جستجو قرار گرفت 🔎\nوقتی پیدا شد آهنگ رو همینجا برات ارسال میکنم 🫡⚡️\n"
+        // );
     }
 }

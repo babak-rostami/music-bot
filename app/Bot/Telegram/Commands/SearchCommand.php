@@ -22,12 +22,15 @@ class SearchCommand implements CommandHandlerInterface
 
     public function canHandle(string $text): bool
     {
-        return !str_starts_with($text, '/');
+        return $text !== '' && !str_starts_with($text, '/');
     }
 
     public function handle(array $message): void
     {
-        $text   = $message['text'];
+        $text = trim($message['text'] ?? '');
+        if ($text === '') {
+            return;
+        }
         $chatId = $message['chat']['id'];
         $from   = $message['from'];
 

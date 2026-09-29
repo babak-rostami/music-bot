@@ -3,11 +3,10 @@
 namespace App\Jobs;
 
 use App\Bot\Bale\Services\BaleService;
-use App\Bot\Shared\BotFactory;
 use App\Bot\Telegram\Services\TelegramService;
 use App\Services\MusicFinder\MusicFinderAccess;
+use App\Services\MusicFinder\MusicFinderBotRegistry;
 use App\Services\MusicFinder\MusicFinderResult;
-use App\Services\MusicFinder\MusicFinderService;
 use App\Services\MusicFinder\MusicFinderUsageService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -26,70 +25,74 @@ class MusicFinderJob implements ShouldQueue
     public int $timeout = 90;
 
     public function __construct(
-        public readonly string $platform,      // telegram | bale
-        public readonly int|string $chatId,
-        public readonly string $mode,          // text | link | media | select
-        public readonly ?string $text = null,
-        public readonly ?string $mediaPath = null,
-        public readonly ?string $mediaType = null,
-        public readonly ?int $sourceMessageId = null,
-        public readonly ?string $callbackData = null,
-        public readonly ?string $originalQuery = null,
+        public string $platform,
+        public int|string $chatId,
+        public string $mode,               // text | link | media | select
+        public ?string $text = null,
+        public ?string $mediaPath = null,
+        public ?string $mediaType = null,
+        public ?int $sourceMessageId = null,
+        public ?string $callbackData = null,
+        public ?string $originalQuery = null,
+        public ?string $botKey = null,     // فقط برای mode=select — کدوم بات دکمه رو نشون داده بود
     ) {}
 
-    public function handle(MusicFinderService $finder): void
+    public function handle(): void
     {
-        $service = BotFactory::make($this->platform);
+        $service = $this->platform === 'bale' ? app(BaleService::class) : app(TelegramService::class);
+
+        // برای «select» حتماً باید همون باتی که دکمه رو نشون داده بود صدا بزنیم؛
+        // برای بقیه‌ی حالت‌ها، یه بات جدید به‌صورت یکی‌درمیون انتخاب می‌شه.
+        $finder = $this->mode === 'select'
+            ? MusicFinderBotRegistry::get($this->botKey ?? '')
+            : MusicFinderBotRegistry::next();
 
         $onQueued = fn() => $service->sendMessage(
             $this->chatId,
-            '⏳ تعداد درخواست ها خیلی زیاد شده، لطفا چند ثانیه دیگه دوباره بفرست...'
+            '⏳ همین الان یکی دیگه داره از این سرویس استفاده می‌کنه، چند لحظه صبر کن، نوبتت می‌رسه...'
         );
 
         try {
             $result = match ($this->mode) {
-                'text'   => $finder->sendText($this->text, $onQueued),
-                'link'   => $finder->identifyFromLink($this->text, $onQueued),
-                'media'  => $finder->sendMedia($this->mediaPath, $this->mediaType, $onQueued),
-                'select' => $finder->clickButton($this->sourceMessageId, $this->callbackData, $onQueued),
+                'text'   => $finder->sendText($this->platform, $this->text, $onQueued),
+                'link'   => $finder->identifyFromLink($this->platform, $this->text, $onQueued),
+                'media'  => $finder->sendMedia($this->platform, $this->mediaPath, $this->mediaType, $onQueued),
+                'select' => $finder->clickButton($this->platform, $this->sourceMessageId, $this->callbackData, $onQueued),
             };
 
-            $this->deliver($service, $result);
+            $this->deliver($service, $finder->key(), $result);
         } finally {
             if ($this->mediaPath && file_exists($this->mediaPath)) {
                 @unlink($this->mediaPath);
             }
-
             MusicFinderAccess::release($this->platform, $this->chatId);
         }
     }
 
-    private function deliver($service, MusicFinderResult $result): void
+    private function deliver($service, string $botKey, MusicFinderResult $result): void
     {
         match ($result->type) {
-            MusicFinderResult::TYPE_AUDIO   => $this->deliverAudio($service, $result),
-            MusicFinderResult::TYPE_BUTTONS => $this->deliverButtons($service, $result),
-            MusicFinderResult::TYPE_ERROR   => $service->sendMessage($this->chatId, '⚠️ ' . $result->text),
+            MusicFinderResult::TYPE_AUDIO,
+            MusicFinderResult::TYPE_TELEGRAM_RELAY => $this->deliverAudio($service, $result),
+            MusicFinderResult::TYPE_BUTTONS        => $this->deliverButtons($service, $botKey, $result),
+            MusicFinderResult::TYPE_ERROR          => $service->sendMessage($this->chatId, $result->text),
         };
     }
 
     private function deliverAudio($service, MusicFinderResult $result): void
     {
-        $fileName = ($result->title ?? 'آهنگ') . '.mp3';
+        $displayTitle = trim(($result->title ?? '') . ($result->performer ? ' - ' . $result->performer : ''));
+        $caption = $displayTitle !== '' ? "🎧 {$displayTitle}" : null;
 
-        $service->sendAudio(
-            $this->chatId,
-            $result->filePath,
-            $fileName,
-            $result->title ?? 'آهنگ شناسایی‌شده',
-            $result->performer ?? ''
-        );
-
-        $displayText = trim(($result->title ?? '') . ($result->performer ? ' - ' . $result->performer : ''));
-        if ($displayText === '') {
-            $displayText = $this->originalQuery ?? $this->text;
+        if ($result->type === MusicFinderResult::TYPE_TELEGRAM_RELAY) {
+            // بدون دانلود/آپلود — مستقیم از کانال رله سمت سرورهای تلگرام به کاربر کپی می‌شه
+            $service->copyMessage($result->relayChannelId, $result->relayMessageId, $this->chatId, $caption);
+        } else {
+            $fileName = ($result->title ?? 'آهنگ') . '.mp3';
+            $service->sendAudio($this->chatId, $result->filePath, $fileName, $result->title ?? 'آهنگ شناسایی‌شده', $result->performer ?? '');
         }
 
+        $displayText = $displayTitle !== '' ? $displayTitle : ($this->originalQuery ?? $this->text);
         MusicFinderUsageService::recordExternalDelivery($this->platform, $this->chatId, $displayText);
 
         $quotaMessage = MusicFinderUsageService::remainingQuotaMessage($this->platform, $this->chatId);
@@ -99,23 +102,27 @@ class MusicFinderJob implements ShouldQueue
 
         $this->notifyAdmin($result);
 
-        @unlink($result->filePath);
+        if ($result->type === MusicFinderResult::TYPE_AUDIO) {
+            @unlink($result->filePath);
+        }
     }
 
-    private function deliverButtons($service, MusicFinderResult $result): void
+    private function deliverButtons($service, string $botKey, MusicFinderResult $result): void
     {
         $buttons = [];
         foreach ($result->buttons as $row) {
             $line = [];
             foreach ($row as $button) {
-                // callback_data واقعیِ بات مقصد رو ۱۰ دقیقه کش می‌کنیم و یه توکن کوتاه به کاربر می‌دیم
                 $token = Str::random(12);
                 Cache::put(
                     "music_finder_btn:{$token}",
-                    ['message_id' => $result->sourceMessageId, 'data' => $button['callback_data']],
+                    [
+                        'message_id' => $result->sourceMessageId,
+                        'data'       => $button['callback_data'],
+                        'bot_key'    => $botKey,
+                    ],
                     now()->addMinutes(10)
                 );
-
                 $line[] = ['text' => $button['text'], 'callback_data' => "mf_pick_{$token}"];
             }
             $buttons[] = $line;
@@ -127,29 +134,25 @@ class MusicFinderJob implements ShouldQueue
     private function notifyAdmin(MusicFinderResult $result): void
     {
         $channelId = config('telegram.notify_channel_id');
-        if (!$channelId || !file_exists($result->filePath)) {
+        if (!$channelId) {
             return;
         }
 
         try {
             $telegram = app(TelegramService::class);
+            // $caption = "🎯 آهنگ شناسایی‌شده برای کاربر\n\n"
+            //     . "🤖 پلتفرم: " . ($this->platform === 'bale' ? 'بله' : 'تلگرام') . "\n"
+            //     . "👤 chat_id: {$this->chatId}\n"
+            //     . "🔍 درخواست اصلی: " . ($this->originalQuery ?? $this->text ?? '-') . "\n\n"
+            //     . "اگه خوب بود، با /new-song ثبتش کن توی دیتابیس.";
 
-            $telegram->sendAudio(
-                $channelId,
-                $result->filePath,
-                ($result->title ?? 'song') . '.mp3',
-                $result->title ?? '-',
-                $result->performer ?? '-'
-            );
+            if ($result->type === MusicFinderResult::TYPE_TELEGRAM_RELAY) {
+                $telegram->copyMessage($result->relayChannelId, $result->relayMessageId, $channelId);
+            } elseif ($result->filePath && file_exists($result->filePath)) {
+                $telegram->sendAudio($channelId, $result->filePath, ($result->title ?? 'song') . '.mp3', $result->title ?? '-', $result->performer ?? '-');
+            }
 
-            $telegram->sendMessage(
-                $channelId,
-                "🎯 آهنگ شناسایی‌شده برای کاربر\n\n"
-                    . "🤖 پلتفرم: " . ($this->platform === 'bale' ? 'بله' : 'تلگرام') . "\n"
-                    . "👤 chat_id: {$this->chatId}\n"
-                    . "🔍 درخواست اصلی: " . ($this->originalQuery ?? $this->text ?? '-') . "\n\n"
-                    . "اگه خوب بود، با /new-song ثبتش کن توی دیتابیس."
-            );
+            // $telegram->sendMessage($channelId, $caption);
         } catch (\Throwable $e) {
             Log::warning('Failed to notify admin about identified song', ['error' => $e->getMessage()]);
         }

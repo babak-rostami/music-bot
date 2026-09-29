@@ -20,6 +20,8 @@ use Illuminate\Support\Str;
 
 abstract class BaseBotActionService
 {
+    private const MAX_SEARCH_TEXT_LENGTH = 200;
+
     public function __construct(
         protected BotUserService $botUserService,
         protected NotificationService $notifier,
@@ -84,15 +86,18 @@ abstract class BaseBotActionService
             $this->forgetPendingMessage($userId);
             $this->forgetLastJoinMessage($userId);
 
+            if ($this->isUnsupportedContentMessage($message)) {
+                $bot->sendMessage($chatId, 'متوجه منظورت نشدم! متن آهنگ، لینک اینستا یا یوتیوب، ویدیو یا قسمتی از آهنگ رو ضبط کن و بفرست 🎵');
+                return;
+            }
+
             $identifiableFileId = $message['audio']['file_id'] ?? $message['video']['file_id'] ?? $message['voice']['file_id'] ?? null;
 
             if ($identifiableFileId) {
                 if (MusicFinderAccess::allowed($this->platform(), (int) $userId)) {
                     $type = isset($message['audio']) ? 'audio' : (isset($message['video']) ? 'video' : 'voice');
                     $this->dispatchMediaIdentification($bot, $chatId, $identifiableFileId, $type);
-                    if ($this->isMediaMessage($message)) {
-                        $this->handleGenericMediaMessage($bot, $message);
-                    }
+                    $this->handleGenericMediaMessage($bot, $message);
                     return;
                 }
             }
@@ -113,7 +118,7 @@ abstract class BaseBotActionService
                 return;
             }
 
-            $this->messageProcessor->process($message);
+            $this->routeToCommandProcessor($bot, $message);
             return;
         }
 
@@ -195,8 +200,7 @@ abstract class BaseBotActionService
 
     protected function isMediaMessage(array $message): bool
     {
-        return isset($message['photo'])
-            || isset($message['video'])
+        return isset($message['video'])
             || isset($message['audio'])
             || isset($message['voice'])
             || isset($message['video_note'])
@@ -206,6 +210,23 @@ abstract class BaseBotActionService
     private function isMusicFinderLink(string $text): bool
     {
         return (bool) preg_match('~(?:youtube\.com|youtu\.be|instagram\.com|tiktok\.com)~i', $text);
+    }
+
+    private function routeToCommandProcessor(BotApiInterface $bot, array $message): void
+    {
+        $text = trim($message['text'] ?? '');
+
+        if ($text !== '' && !str_starts_with($text, '/') && mb_strlen($text) > self::MAX_SEARCH_TEXT_LENGTH) {
+            $bot->sendMessage(
+                $message['chat']['id'],
+                "⚠️ متن خیلی طولانیه!\n\n"
+                    . "متن جستجو نباید بیشتر از " . self::MAX_SEARCH_TEXT_LENGTH . " کاراکتر باشه.\n"
+                    . "لطفاً کوتاه‌ترش کن و دوباره بفرست."
+            );
+            return;
+        }
+
+        $this->messageProcessor->process($message);
     }
 
     private function handleLegacyLinkReply(BotApiInterface $bot, int|string $chatId): void
@@ -228,8 +249,8 @@ abstract class BaseBotActionService
     private function dispatchDirectDownload(int|string $chatId, int $songId): void
     {
         match ($this->platform()) {
-            'bale'  => ProcessBaleMusicDownloadJob::dispatch($songId, $chatId, null, null)->onQueue('download-music'),
-            default => ProcessMusicDownloadJob::dispatch($songId, $chatId, null)->onQueue('download-music'),
+            'bale'  => ProcessBaleMusicDownloadJob::dispatch($songId, $chatId, null, null),
+            default => ProcessMusicDownloadJob::dispatch($songId, $chatId, null),
         };
     }
 
@@ -316,8 +337,14 @@ abstract class BaseBotActionService
 
         $bot->answerCallbackQuery($callback['id'], '🔎 در حال آماده‌سازی...');
 
-        MusicFinderJob::dispatch($this->platform(), $chatId, 'select', sourceMessageId: $cached['message_id'], callbackData: $cached['data'])
-            ->onQueue('music-finder');
+        MusicFinderJob::dispatch(
+            $this->platform(),
+            $chatId,
+            'select',
+            sourceMessageId: $cached['message_id'],
+            callbackData: $cached['data'],
+            botKey: $cached['bot_key'] ?? null,
+        )->onQueue('music-finder');
     }
 
     // ─── واکنش لایک/دیس‌لایک ───
@@ -376,7 +403,7 @@ abstract class BaseBotActionService
             $pendingMessage = $this->pullPendingMessage($userId);
 
             if ($pendingMessage) {
-                $this->messageProcessor->process($pendingMessage);
+                $this->routeToCommandProcessor($bot, $pendingMessage);
             } else {
                 $this->membershipService->sendSuccessMessage($bot, $chatId, $userName);
             }
@@ -486,5 +513,18 @@ abstract class BaseBotActionService
     private function forgetLastJoinMessage(int $userId): void
     {
         Cache::forget($this->lastJoinMessageKey($userId));
+    }
+
+    private function isUnsupportedContentMessage(array $message): bool
+    {
+        return isset($message['sticker'])
+            || isset($message['animation'])
+            || isset($message['photo'])
+            || isset($message['location'])
+            || isset($message['contact'])
+            || isset($message['poll'])
+            || isset($message['dice'])
+            || isset($message['game'])
+            || isset($message['venue']);
     }
 }

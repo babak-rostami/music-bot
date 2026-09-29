@@ -45,13 +45,18 @@ return [
         'api_hash' => env('MADELINE_API_HASH'),
     ],
 
+    'music_finder_bots' => [
+        ['key' => 'primary',   'username' => env('MUSIC_FINDER_BOT_USERNAME')],
+        ['key' => 'secondary', 'username' => env('MUSIC_FINDER_BOT_2_USERNAME')],
+    ],
+
     'music_finder_bot' => [
-        'username'        => env('MUSIC_FINDER_BOT_USERNAME'),
-        'timeout'         => env('MUSIC_FINDER_TIMEOUT', 40),
-        'enabled_for_all' => env('MUSIC_FINDER_ENABLED_FOR_ALL', false),
-        'min_gap_seconds' => env('MUSIC_FINDER_MIN_GAP_SECONDS', 3),
+        'timeout'                    => env('MUSIC_FINDER_TIMEOUT', 40),
+        'enabled_for_all'            => env('MUSIC_FINDER_ENABLED_FOR_ALL', false),
+        'min_gap_seconds'            => env('MUSIC_FINDER_MIN_GAP_SECONDS', 3),
         'free_requests_limit'        => env('MUSIC_FINDER_FREE_LIMIT', 3),
         'free_requests_window_hours' => env('MUSIC_FINDER_FREE_WINDOW_HOURS', 12),
+        'relay_channel_id'           => env('MUSIC_FINDER_RELAY_CHANNEL_ID'),
     ],
 
 ];

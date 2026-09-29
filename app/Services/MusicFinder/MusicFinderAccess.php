@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Cache;
 
 class MusicFinderAccess
 {
-    private const BUSY_TTL_SECONDS = 90;
+    private const BUSY_TTL_SECONDS = 45;
 
     public static function allowed(string $platform, int $userId): bool
     {

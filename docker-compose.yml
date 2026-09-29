@@ -7,10 +7,15 @@ x-queue-worker: &queue-worker
   networks:
     - music-network
 
-x-download-worker: &download-worker
+x-download-worker-telegram: &download-worker-telegram
   <<: *queue-worker
   command: >
-    php artisan queue:work --queue=download-music --tries=3 --timeout=300 --max-jobs=100 --max-time=3600
+    php artisan queue:work --queue=download-music-telegram --tries=3 --timeout=300 --max-jobs=100 --max-time=3600
+
+x-download-worker-bale: &download-worker-bale
+  <<: *queue-worker
+  command: >
+    php artisan queue:work --queue=download-music-bale --tries=3 --timeout=300 --max-jobs=100 --max-time=3600
 
 x-crawl-worker: &crawl-worker
   <<: *queue-worker
@@ -58,9 +63,13 @@ services:
       - MADELINE_API_ID=${MADELINE_API_ID}
       - MADELINE_API_HASH=${MADELINE_API_HASH}
 
-  queue-download:
-    <<: *download-worker
-    container_name: musicbot-queue-download
+  queue-download-telegram:
+    <<: *download-worker-telegram
+    container_name: musicbot-queue-download-telegram
+
+  queue-download-bale:
+    <<: *download-worker-bale
+    container_name: musicbot-queue-download-bale
 
   queue-crawl:
     <<: *crawl-worker

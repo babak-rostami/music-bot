@@ -3,6 +3,7 @@
 namespace App\Bot\Bale\Services;
 
 use App\Bot\Shared\BotApiInterface;
+use App\Bot\Shared\Concerns\HasRetryableHttp;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -12,6 +13,7 @@ use Illuminate\Support\Facades\Log;
  */
 class BaleService implements BotApiInterface
 {
+    use HasRetryableHttp;
     protected string $apiUrl;
     private string $caption;
 
@@ -56,7 +58,7 @@ class BaleService implements BotApiInterface
             ]);
         }
 
-        return Http::post($this->apiUrl . '/sendMessage', $payload);
+        return $this->http()->post($this->apiUrl . '/sendMessage', $payload);
     }
 
     /**
@@ -85,7 +87,7 @@ class BaleService implements BotApiInterface
             ]);
         }
 
-        return Http::post($this->apiUrl . '/editMessageText', $payload);
+        return $this->http()->post($this->apiUrl . '/editMessageText', $payload);
     }
 
     /**
@@ -93,7 +95,7 @@ class BaleService implements BotApiInterface
      */
     public function deleteMessage(int|string $chatId, int $messageId)
     {
-        return Http::post($this->apiUrl . '/deleteMessage', [
+        return $this->http()->post($this->apiUrl . '/deleteMessage', [
             'chat_id'    => (string) $chatId,
             'message_id' => $messageId,
         ]);
@@ -118,7 +120,7 @@ class BaleService implements BotApiInterface
      */
     public function answerCallbackQuery(string $callbackQueryId, ?string $text = null)
     {
-        return Http::post($this->apiUrl . '/answerCallbackQuery', [
+        return $this->http()->post($this->apiUrl . '/answerCallbackQuery', [
             'callback_query_id' => $callbackQueryId,
             'text'              => $text,
         ]);
@@ -129,7 +131,7 @@ class BaleService implements BotApiInterface
      */
     public function sendAudioByFileId(int|string $chatId, string $fileId, string $title, string $performer)
     {
-        return Http::post($this->apiUrl . '/sendAudio', [
+        return $this->http()->post($this->apiUrl . '/sendAudio', [
             'chat_id'   => (string) $chatId,
             'audio'     => $fileId,
             'title'     => $title,
@@ -173,22 +175,32 @@ class BaleService implements BotApiInterface
      */
     public function getChatMember(string|int $chatId, int $userId): ?array
     {
-        $response = Http::post($this->apiUrl . '/getChatMember', [
+        $response = $this->http()->post($this->apiUrl . '/getChatMember', [
             'chat_id' => (string) $chatId,
             'user_id' => $userId,
         ]);
 
-        if (!$response->successful()) {
+        if ($response->successful()) {
+            return $response->json('result');
+        }
+
+        $description = (string) $response->json('description', '');
+
+        // این یکی یعنی کاربر فقط هنوز عضو نشده — کاملاً عادیه، هر کاربر جدیدی این جواب رو می‌گیره
+        $isExpectedNotMember = str_contains($description, 'user not found')
+            || str_contains($description, 'PARTICIPANT_ID_INVALID')
+            || str_contains($description, 'not participant');
+
+        if (!$isExpectedNotMember) {
             Log::warning('Bale getChatMember failed', [
                 'chat_id' => $chatId,
                 'user_id' => $userId,
                 'status'  => $response->status(),
-                'body'    => $response->json('description'),
+                'body'    => $description,
             ]);
-            return null;
         }
 
-        return $response->json('result');
+        return null;
     }
 
     /**
@@ -209,7 +221,7 @@ class BaleService implements BotApiInterface
         ];
 
         // با آدرس API بله ارسال می‌شود ($this->baleApiUrl)
-        return Http::post($this->apiUrl . '/forwardMessage', $payload);
+        return $this->http()->post($this->apiUrl . '/forwardMessage', $payload);
     }
 
     /**
@@ -218,7 +230,8 @@ class BaleService implements BotApiInterface
     public function copyMessage(
         int|string $fromChatId,
         int $messageId,
-        int|string|null $toChatId = null
+        int|string|null $toChatId = null,
+        ?string $caption = null
     ) {
         $toChatId = $toChatId ?? config('telegram.bale_cache_channel_id');
 
@@ -228,12 +241,16 @@ class BaleService implements BotApiInterface
             'message_id'   => $messageId,
         ];
 
-        return Http::post($this->apiUrl . '/copyMessage', $payload);
+        if ($caption !== null) {
+            $payload['caption'] = $caption;
+        }
+
+        return $this->http()->post($this->apiUrl . '/copyMessage', $payload);
     }
 
     public function getFile(string $fileId): ?array
     {
-        $response = Http::post($this->apiUrl . '/getFile', ['file_id' => $fileId]);
+        $response = $this->http()->post($this->apiUrl . '/getFile', ['file_id' => $fileId]);
 
         if (!$response->successful()) {
             Log::warning('Bale getFile failed', ['file_id' => $fileId, 'body' => $response->json('description')]);
@@ -245,15 +262,38 @@ class BaleService implements BotApiInterface
 
     public function downloadFile(string $filePath, string $destination): bool
     {
-        // ⚠️ الگوی آدرس فایل بله رو دقیق از مستنداتشون چک کن؛ اینجا با همون الگوی api رو کپی کردم (tapi.bale.ai/file/bot<token>/...)
         $url = 'https://tapi.bale.ai/file/bot' . config('telegram.bale_bot_token') . '/' . $filePath;
-        $stream = fopen($destination, 'w');
-        $response = Http::timeout(120)->withOptions(['sink' => $stream])->get($url);
 
-        if (is_resource($stream)) {
-            fclose($stream);
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $stream = fopen($destination, 'w'); // هر تلاش، فایل کاملاً از نو باز می‌شه
+
+            try {
+                $response = Http::timeout(120)->withOptions(['sink' => $stream])->get($url);
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+                if ($attempt === 3) {
+                    return false;
+                }
+                sleep(2);
+                continue;
+            }
+
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+
+            if ($response->successful()) {
+                return true;
+            }
+
+            if ($attempt === 3) {
+                return false;
+            }
+            sleep(2);
         }
 
-        return $response->successful();
+        return false;
     }
 }

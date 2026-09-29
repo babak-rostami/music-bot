@@ -24,7 +24,7 @@ interface BotApiInterface
 
     public function forwardMessage(int|string $fromChatId, int $messageId, int|string|null $toChatId = null);
 
-    public function copyMessage(int|string $fromChatId, int $messageId, int|string|null $toChatId = null);
+    public function copyMessage(int|string $fromChatId, int $messageId, int|string|null $toChatId = null, ?string $caption = null);
 
     public function getFile(string $fileId): ?array;
 
