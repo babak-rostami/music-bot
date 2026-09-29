@@ -278,4 +278,20 @@ class TelegramService implements BotApiInterface
 
         return false;
     }
+
+    public function setMyCommands(array $commands, int|string|null $scopeChatId = null): bool
+    {
+        $payload = ['commands' => $commands];
+
+        if ($scopeChatId !== null) {
+            $payload['scope'] = [
+                'type'    => 'chat',
+                'chat_id' => $scopeChatId,
+            ];
+        }
+
+        $response = $this->http()->post($this->apiUrl . '/setMyCommands', $payload);
+
+        return $response->successful();
+    }
 }

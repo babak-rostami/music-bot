@@ -54,6 +54,7 @@ abstract class BaseBotActionService
 
     protected function processMessage(array $message): void
     {
+        // اگه پیام از کانال یا گروه اومده بود نادیده بگیر
         if ($this->isGroupOrChannelMessage($message)) {
             return;
         }
@@ -75,6 +76,8 @@ abstract class BaseBotActionService
             }
         }
 
+        // اگه لینک دانلود از سایت بود همون آهنگ رو براش بفرست
+        // عضویت هم لازم نیست، بعد این چک میشه
         if ($songId = $this->extractDirectDownloadSongId($message)) {
             $this->dispatchDirectDownload($chatId, $songId);
             return;
@@ -139,6 +142,7 @@ abstract class BaseBotActionService
         $messageId = $callback['message']['message_id'];
         $data      = $callback['data'] ?? '';
 
+        //اگه ادمین داشت کاری میکرد
         if (
             $this->adminService->isAdmin($bot, (int) $userId)
             && ($data === 'admin_cancel' || $this->adminService->hasActiveFlow($bot, (int) $userId))
@@ -147,16 +151,19 @@ abstract class BaseBotActionService
             return;
         }
 
+        // اگه روی دکمه های لایک و دیس لایک زده بود
         if (str_starts_with($data, 'react_like_') || str_starts_with($data, 'react_dislike_')) {
             $this->handleSongReactionCallback($bot, $callback);
             return;
         }
 
+        //اگه روی دکمه هایی که از سرویس آهنگ یاب اومده کلیک کرد
         if (str_starts_with($data, 'mf_pick_')) {
             $this->handleMusicFinderPick($bot, $callback);
             return;
         }
 
+        // اگه روی دکمه بررسی عضویت کلیک کرد
         if ($data === $this->membershipCheckCallbackData()) {
             $this->handleMembershipCheck($bot, $callback['id'], $chatId, $messageId, $userId, $userName);
             return;
@@ -172,10 +179,13 @@ abstract class BaseBotActionService
             return;
         }
 
+        //اگه روی دکمه های آهنگ خودمون کلیک کرد
         if (str_starts_with($data, 'song_')) {
             $songId = (int) str_replace('song_', '', $data);
             $this->songUploadService->findBestLinkAndSend($callback, $songId, $chatId, $bot);
         } elseif (str_starts_with($data, 'request_song_')) {
+            // اگه روی دکمه جستجوی پیشرفته کلیک کرد
+            // اول درخواست ذخیره میشه بعد ارسال میشه به سرویس های آهنگ یاب
             $token = str_replace('request_song_', '', $data);
             $this->handleSongRequestClick($bot, $callback['id'], $token, $chatId, $messageId);
         }

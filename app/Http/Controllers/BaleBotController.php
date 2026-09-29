@@ -17,9 +17,11 @@ class BaleBotController extends Controller
     public function index(Request $request)
     {
         try {
+            // اگه روی دکمه ای کلیک کرده
             if ($request->has('callback_query')) {
                 $this->baleActionService->handleCallback($request);
             } elseif ($request->has('message')) {
+                // اگه پیام فرستاده - متن، لینک، ویدیو و صوت و ...
                 $this->baleActionService->handleMessage($request);
             }
         } catch (\Throwable $e) {

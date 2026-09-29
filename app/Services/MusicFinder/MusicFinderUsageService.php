@@ -100,4 +100,21 @@ class MusicFinderUsageService
             . "جستجو با ویدیو\n"
             . "جستجو با صدای آهنگ";
     }
+
+    /**
+     * تعداد درخواست جستجوی پیشرفته‌ای که از سهمیه‌ی این کاربر باقی مونده.
+     */
+    public static function remainingCount(string $platform, int|string $userId): int
+    {
+        $limit = (int) config('services.music_finder_bot.free_requests_limit', 3);
+        $windowHours = (int) config('services.music_finder_bot.free_requests_window_hours', 12);
+
+        $used = MusicFinderRequest::where('platform', $platform)
+            ->where('user_id', $userId)
+            ->where('source', MusicFinderRequest::SOURCE_EXTERNAL)
+            ->where('created_at', '>=', now()->subHours($windowHours))
+            ->count();
+
+        return max(0, $limit - $used);
+    }
 }

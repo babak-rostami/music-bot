@@ -3,8 +3,10 @@
 namespace App\Bot\Telegram;
 
 use App\Bot\Shared\MessageProcessorInterface;
+use App\Bot\Telegram\Commands\HelpCommand;
 use App\Bot\Telegram\Commands\SearchCommand;
 use App\Bot\Telegram\Commands\StartCommand;
+use App\Bot\Telegram\Commands\StatusCommand;
 use App\Bot\Telegram\Contracts\CommandHandlerInterface;
 use App\Bot\Telegram\Services\TelegramService;
 
@@ -17,14 +19,16 @@ class MessageProcessor implements MessageProcessorInterface
 
     public function __construct(
         StartCommand $startCommand,
+        HelpCommand $helpCommand,
+        StatusCommand $statusCommand,
         SearchCommand $searchCommand,
         protected TelegramService $telegramService,
     ) {
-        // ترتیب هندلرها مهم است. کامندهای خاص باید قبل از کامندهای عمومی بیایند.
         $this->handlers = [
             $startCommand,
-            // اینجا می‌توانید کامندهای بعدی را اضافه کنید (/help, /settings, ...)
-            $searchCommand, // کامند جستجو (پیش‌فرض) در آخر قرار می‌گیرد
+            $helpCommand,
+            $statusCommand,
+            $searchCommand, // همیشه آخر، چون هر متنی رو قبول می‌کنه
         ];
     }
 

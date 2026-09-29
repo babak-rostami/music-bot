@@ -29,4 +29,11 @@ interface BotApiInterface
     public function getFile(string $fileId): ?array;
 
     public function downloadFile(string $filePath, string $destination): bool;
+
+    /**
+     * ثبت لیست دستورات توی منوی «/» کنار باکس تایپ.
+     * اگه $scopeChatId پر بشه، این لیست فقط برای همون یک چت (مثلاً فقط ادمین) اعمال می‌شه؛
+     * اگه خالی باشه، برای همه‌ی کاربرای بات (scope پیش‌فرض) اعمال می‌شه.
+     */
+    public function setMyCommands(array $commands, int|string|null $scopeChatId = null): bool;
 }

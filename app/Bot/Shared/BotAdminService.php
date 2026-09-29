@@ -44,8 +44,8 @@ class BotAdminService
         $text   = trim($message['text'] ?? '');
 
         return match ($text) {
-            '/new-song'     => $this->startNewSong($bot, $userId, $chatId),
-            '/send-message' => $this->startSendMessage($bot, $userId, $chatId),
+            '/new_song'     => $this->startNewSong($bot, $userId, $chatId),
+            '/send_message' => $this->startSendMessage($bot, $userId, $chatId),
             '/broadcast'    => $this->startBroadcast($bot, $userId, $chatId),
             default         => false,
         };

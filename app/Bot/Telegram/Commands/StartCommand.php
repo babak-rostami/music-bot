@@ -2,6 +2,8 @@
 
 namespace App\Bot\Telegram\Commands;
 
+use App\Bot\Shared\BotAdminService;
+use App\Bot\Shared\BotCommandRegistrar;
 use App\Bot\Telegram\Actions\ShowDownloadOptionsAction;
 use App\Bot\Telegram\Contracts\CommandHandlerInterface;
 use App\Bot\Telegram\Services\TelegramService;
@@ -12,6 +14,7 @@ class StartCommand implements CommandHandlerInterface
     public function __construct(
         protected TelegramService $telegramService,
         protected ShowDownloadOptionsAction $showDownloadOptionsAction,
+        protected BotAdminService $adminService,
     ) {}
 
     public function canHandle(string $text): bool
@@ -38,11 +41,22 @@ class StartCommand implements CommandHandlerInterface
             return;
         }
 
+        // ثبت دستورات منو
+        if ($this->adminService->isAdmin($this->telegramService, (int) $message['from']['id'])) {
+            BotCommandRegistrar::ensureRegistered($this->telegramService, true, $chatId);
+        } else {
+            BotCommandRegistrar::ensureRegistered($this->telegramService, false, $chatId);
+        }
+
         // حالت عادی /start
-        $welcomeText = "سلام {$firstName}! 👋\n\n"
-            . "به ربات موزیک‌یاب خوش اومدی. 🎵\n\n"
-            . "یه تیکه از متن آهنگ رو برام بفرست؛ حتی اگه فقط چند کلمه ازش یادت مونده باشه.\n\n"
-            . "من آهنگ رو پیدا می‌کنم و فایلش رو برات می‌فرستم. 🚀";
+        $welcomeText = "🎵 خوش اومدی به قوی‌ترین ربات آهنگ‌یاب!\n\n"
+            . "🔤 جستجو با متن آهنگ\n"
+            . "🔗 لینک اینستاگرام و یوتیوب و تیک تاک\n"
+            . "🎬 جستجو با ویدیو\n"
+            . "🎙 قسمتی از صدای آهنگ\n"
+            . "🔎 جستجوی پیشرفته\n"
+            . "🎶 درخواست آهنگ جدید\n"
+            . "کافیه یکی از روش‌های بالا رو امتحان کنی! 🚀";
 
         $this->telegramService->sendMessage($chatId, $welcomeText);
     }

@@ -4,6 +4,8 @@ namespace App\Bot\Bale\Commands;
 
 use App\Bot\Bale\Actions\BaleShowDownloadOptionsAction;
 use App\Bot\Bale\Services\BaleService;
+use App\Bot\Shared\BotAdminService;
+use App\Bot\Shared\BotCommandRegistrar;
 use App\Jobs\ProcessBaleMusicDownloadJob;
 
 class BaleStartCommand
@@ -11,6 +13,8 @@ class BaleStartCommand
     public function __construct(
         protected BaleService $baleService,
         protected BaleShowDownloadOptionsAction $showDownloadOptionsAction,
+        protected BotAdminService $adminService,
+
     ) {}
 
     public function canHandle(string $text): bool
@@ -36,11 +40,22 @@ class BaleStartCommand
             return;
         }
 
+        // ثبت دستورات منو
+        if ($this->adminService->isAdmin($this->baleService, (int) $message['from']['id'])) {
+            BotCommandRegistrar::ensureRegistered($this->baleService, true, $chatId);
+        } else {
+            BotCommandRegistrar::ensureRegistered($this->baleService, false, $chatId);
+        }
+
         // حالت عادی /start
-        $welcomeText = "سلام {$firstName}! 👋\n\n"
-            . "به ربات موزیک‌یاب خوش اومدی. 🎵\n\n"
-            . "یه تیکه از متن آهنگ رو برام بفرست؛ حتی اگه فقط چند کلمه ازش یادت مونده باشه.\n\n"
-            . "من آهنگ رو پیدا می‌کنم و فایلش رو برات می‌فرستم. 🚀";
+        $welcomeText = "🎵 خوش اومدی به قوی‌ترین ربات آهنگ‌یاب!\n\n"
+            . "🔤 جستجو با متن آهنگ\n"
+            . "🔗 لینک اینستاگرام و یوتیوب و تیک تاک\n"
+            . "🎬 جستجو با ویدیو\n"
+            . "🎙 قسمتی از صدای آهنگ\n"
+            . "🔎 جستجوی پیشرفته\n"
+            . "🎶 درخواست آهنگ جدید\n"
+            . "کافیه یکی از روش‌های بالا رو امتحان کنی! 🚀";
 
         $this->baleService->sendMessage($chatId, $welcomeText);
     }

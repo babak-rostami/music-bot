@@ -2,8 +2,10 @@
 
 namespace App\Bot\Bale;
 
+use App\Bot\Bale\Commands\BaleHelpCommand;
 use App\Bot\Bale\Commands\BaleSearchCommand;
 use App\Bot\Bale\Commands\BaleStartCommand;
+use App\Bot\Bale\Commands\BaleStatusCommand;
 use App\Bot\Bale\Services\BaleService;
 use App\Bot\Shared\MessageProcessorInterface;
 
@@ -13,11 +15,15 @@ class MessageProcessor implements MessageProcessorInterface
 
     public function __construct(
         BaleStartCommand $startCommand,
+        BaleHelpCommand $helpCommand,
+        BaleStatusCommand $statusCommand,
         BaleSearchCommand $searchCommand,
         protected BaleService $baleService,
     ) {
         $this->handlers = [
             $startCommand,
+            $helpCommand,
+            $statusCommand,
             $searchCommand,
         ];
     }
