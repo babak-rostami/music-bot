@@ -118,12 +118,19 @@ class BaleService implements BotApiInterface
     /**
      * پاسخ به callback query
      */
-    public function answerCallbackQuery(string $callbackQueryId, ?string $text = null)
+    public function answerCallbackQuery(string $callbackQueryId, ?string $text = null, bool $showAlert = false)
     {
-        return $this->http()->post($this->apiUrl . '/answerCallbackQuery', [
-            'callback_query_id' => $callbackQueryId,
-            'text'              => $text,
-        ]);
+        $payload = ['callback_query_id' => $callbackQueryId];
+
+        if ($text !== null) {
+            $payload['text'] = $text;
+        }
+
+        if ($showAlert) {
+            $payload['show_alert'] = true;
+        }
+
+        return $this->http()->post($this->apiUrl . '/answerCallbackQuery', $payload);
     }
 
     /**

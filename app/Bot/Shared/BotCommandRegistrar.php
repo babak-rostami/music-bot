@@ -25,10 +25,9 @@ class BotCommandRegistrar
     {
         return [
             ['command' => 'start', 'description' => 'شروع ربات'],
-            ['command' => 'help', 'description' => 'راهنمای استفاده'],
-            ['command' => 'status', 'description' => 'وضعیت درخواست‌های امروز'],
-            // 👇 فعلاً غیرفعال — هروقت آماده بود، این خط رو از کامنت در بیار:
             // ['command' => 'upgrade', 'description' => 'جستجوی پیشرفته'],
+            ['command' => 'status', 'description' => 'وضعیت درخواست‌های امروز'],
+            ['command' => 'help', 'description' => 'راهنمای استفاده'],
         ];
     }
 
@@ -41,6 +40,7 @@ class BotCommandRegistrar
             ['command' => 'new_song', 'description' => 'ایجاد آهنگ جدید'],
             ['command' => 'send_message', 'description' => 'ارسال پیام به کاربر'],
             ['command' => 'broadcast', 'description' => 'ارسال پیام به کاربران'],
+            ['command' => 'upgrade', 'description' => 'جستجوی پیشرفته'],
         ];
     }
 

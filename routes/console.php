@@ -10,3 +10,5 @@ Schedule::command('app:crawl-last-madahi-kashob-command-2')->twiceDaily(0, 12);
 Schedule::command('crawler:bia2music:latest')->twiceDaily(0, 12);
 Schedule::command('ytdlp:update')->daily();
 Schedule::command('logs:cleanup')->daily();
+Schedule::command('payments:reconcile')->everyFiveMinutes();
+Schedule::command('payments:cleanup')->daily();

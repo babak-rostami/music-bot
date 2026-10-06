@@ -9,13 +9,59 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
- * سرویس صحبت با یک بات آهنگ‌یاب مشخص (از طریق MadelineProto).
+ * ارتباط و تعامل با یک بات خارجی Music Finder از طریق MadelineProto.
  *
- * هر نمونه از این کلاس به یک بات خاص وصله (botKey + peerUsername).
- * از new مستقیم استفاده نکن — همیشه از MusicFinderBotRegistry بگیرش.
+ * هر نمونه از این سرویس به یک بات مشخص متصل است و با استفاده از سشن
+ * مشترک MadelineProto، پیام، لینک یا فایل را برای آن بات ارسال می‌کند
+ * و پاسخ آن را دریافت و به MusicFinderResult تبدیل می‌کند.
  *
- * قفل و فاصله‌ی زمانی per-bot هست (نه سراسری)، تا وقتی چند تا بات داریم،
- * واقعاً بتونن مستقل و موازی درخواست پردازش کنن.
+ * این کلاس برای هر بات خارجی یک Lock مستقل دارد تا درخواست‌های هم‌زمان
+ * با یک بات باعث قاطی شدن پیام‌ها و پاسخ‌ها نشوند.
+ *
+ * چرخه کلی یک درخواست:
+ *
+ * 1. درخواست کاربر وارد MusicFinderService می‌شود.
+ * 2. سرویس Lock مربوط به همان Music Finder را می‌گیرد.
+ * 3. پیام، لینک یا فایل برای بات خارجی ارسال می‌شود.
+ * 4. سرویس با استفاده از شناسه آخرین پیام موجود، نقطه شروع دریافت پاسخ را مشخص می‌کند.
+ * 5. تا دریافت یک پیام جدید و معتبر از بات منتظر می‌ماند.
+ * 6. پیام‌های میانی مانند «در حال جستجو»، استیکر و پیام‌های نامعتبر نادیده گرفته می‌شوند.
+ * 7. پاسخ نهایی به MusicFinderResult تبدیل می‌شود.
+ * 8. Lock آزاد می‌شود و درخواست بعدی می‌تواند با همان بات کار کند.
+ *
+ * Lock فقط تا پایان یک عملیات فعال با Music Finder نگه داشته می‌شود
+ * و برای مدت زمانی که کاربر باید روی یک لیست آهنگ کلیک کند باقی نمی‌ماند.
+ *
+ * برای مثال، اگر درخواست کاربر شامل جستجوی متن باشد و Music Finder
+ * یک لیست آهنگ برگرداند، Lock بلافاصله پس از دریافت لیست آزاد می‌شود.
+ * اطلاعات لازم مانند callback_data و شناسه پیام Music Finder همراه نتیجه
+ * برگردانده می‌شوند تا اگر کاربر چند دقیقه بعد یکی از آهنگ‌ها را انتخاب کرد،
+ * درخواست جدیدی ایجاد شود و همان دکمه روی همان پیام قبلی انتخاب شود.
+ *
+ * در نتیجه، اگر کاربر A لیست آهنگ دریافت کند ولی هنوز انتخابی انجام ندهد،
+ * کاربر B می‌تواند بلافاصله درخواست جدیدی ارسال کند.
+ *
+ * در درخواست‌هایی مانند ارسال ویدیو، Voice یا لینک که Music Finder
+ * مستقیماً آهنگ نهایی را پیدا می‌کند، Lock تا پایان همان عملیات نگه داشته
+ * می‌شود؛ یعنی تا زمانی که پاسخ نهایی دریافت یا عملیات با خطا/Timeout تمام شود.
+ *
+ * اگر درخواست دیگری در این مدت برسد، ابتدا برای گرفتن Lock منتظر می‌ماند.
+ * مدت انتظار توسط block() مشخص می‌شود و انتظار بی‌نهایت نیست. اگر Lock
+ * در این مدت آزاد نشود، درخواست جدید با نتیجه خطا برمی‌گردد.
+ *
+ * خطاهای عملیات نیز باعث باقی ماندن Lock نمی‌شوند؛ زیرا آزاد کردن Lock
+ * در finally انجام می‌شود.
+ *
+ * محدودیت‌های Telegram مانند FLOOD_WAIT نیز در این کلاس مدیریت می‌شوند.
+ * برای محدودیت‌های کوتاه، درخواست پس از صبر کردن مجدداً تلاش می‌شود و
+ * برای محدودیت‌های طولانی‌تر یا خطاهای جدی Session، به ادمین هشدار داده
+ * می‌شود.
+ *
+ * پاسخ نهایی Music Finder می‌تواند شامل موارد زیر باشد:
+ * - فایل صوتی دانلودشده روی سرور
+ * - پیام صوتی رله‌شده در کانال تلگرام، بدون دانلود فایل
+ * - لیست دکمه‌های انتخاب آهنگ
+ * - پیام خطا
  */
 class MusicFinderService
 {
@@ -32,6 +78,21 @@ class MusicFinderService
         return $this->botKey;
     }
 
+    /**
+     * یک متن یا لینک را برای بات Music Finder ارسال کرده و تا دریافت نتیجه
+     * نهایی منتظر می‌ماند.
+     *
+     * این عملیات داخل Lock مربوط به همان بات انجام می‌شود تا در زمان انتظار
+     * برای پاسخ، درخواست دیگری با همان بات وارد مکالمه نشود.
+     *
+     * قبل از ارسال، شناسه آخرین پیام موجود در گفت‌وگو ذخیره می‌شود تا هنگام
+     * دریافت پاسخ فقط پیام‌هایی که بعد از شروع این درخواست ایجاد شده‌اند
+     * بررسی شوند.
+     *
+     * اگر Music Finder یک لیست آهنگ برگرداند، نتیجه شامل دکمه‌ها و اطلاعات
+     * لازم برای ادامه انتخاب کاربر خواهد بود و پس از برگرداندن نتیجه Lock
+     * آزاد می‌شود.
+     */
     public function sendText(string $forPlatform, string $text, ?\Closure $onQueued = null): MusicFinderResult
     {
         return $this->withLock(function (API $api) use ($forPlatform, $text) {
@@ -41,6 +102,18 @@ class MusicFinderService
         }, $onQueued);
     }
 
+    /**
+     * یک فایل صوتی، ویدیو یا Voice را برای شناسایی به بات Music Finder ارسال می‌کند.
+     *
+     * ابتدا وجود فایل و محدودیت حجم بررسی می‌شود. سپس درخواست داخل Lock مربوط
+     * به همان بات اجرا شده و فایل برای Music Finder ارسال می‌شود.
+     *
+     * تا دریافت نتیجه نهایی، Lock حفظ می‌شود؛ زیرا در این مدت پاسخ Music Finder
+     * متعلق به همین درخواست است و نباید درخواست دیگری با همان بات هم‌زمان شود.
+     *
+     * پیام‌های میانی نادیده گرفته می‌شوند و پس از دریافت فایل صوتی نهایی،
+     * نتیجه به MusicFinderResult تبدیل شده و Lock آزاد می‌شود.
+     */
     public function sendMedia(string $forPlatform, string $filePath, string $type, ?\Closure $onQueued = null): MusicFinderResult
     {
         if (!file_exists($filePath)) {
@@ -81,6 +154,25 @@ class MusicFinderService
         }, $onQueued);
     }
 
+    /**
+     * یک Callback Button از پیام قبلی Music Finder را انتخاب می‌کند.
+     *
+     * این متد زمانی استفاده می‌شود که کاربر قبلاً یک لیست آهنگ دریافت کرده
+     * و بعداً یکی از گزینه‌ها را انتخاب کرده است.
+     *
+     * برخلاف مرحله اول جستجو، سرویس در فاصله بین نمایش لیست و کلیک کاربر
+     * Lock را نگه نمی‌دارد. وقتی کاربر کلیک می‌کند، این متد به‌عنوان یک
+     * درخواست جدید Lock را می‌گیرد.
+     *
+     * شناسه پیام قبلی Music Finder و callback_data دکمه از نتیجه مرحله قبل
+     * همراه درخواست نگه داشته می‌شوند تا دقیقاً همان دکمه روی همان پیام انتخاب شود؛
+     * حتی اگر در فاصله بین این دو مرحله، درخواست‌های دیگری برای Music Finder
+     * انجام شده باشند.
+     *
+     * خطای BOT_RESPONSE_TIMEOUT لزوماً به معنی ناموفق بودن کلیک نیست؛
+     * ممکن است Music Finder کلیک را دریافت کرده باشد اما پاسخی برای Callback
+     * ارسال نکرده باشد. در این حالت سرویس به انتظار برای نتیجه ادامه می‌دهد.
+     */
     public function clickButton(string $forPlatform, int $sourceMessageId, string $callbackData, ?\Closure $onQueued = null): MusicFinderResult
     {
         return $this->withLock(function (API $api) use ($forPlatform, $sourceMessageId, $callbackData) {
@@ -110,11 +202,17 @@ class MusicFinderService
     }
 
     /**
-     * سناریوی لینک: لینک رو می‌فرسته و منتظر می‌مونه. این متد به‌صورت خودکار
-     * هم حالتی که بات بعد از ویدیو خودش آهنگ رو بفرسته، هم حالتی که نیاز به
-     * کلیک روی دکمه‌ی «شناسایی موسیقی» داره رو پشتیبانی می‌کنه — چون منطق
-     * رد کردن پیام‌های میانی (waitForReply/shouldSkipMessage) هر دو حالت رو
-     * به‌صورت عمومی درست تشخیص می‌ده، نیازی به کد جدا برای هر بات نیست.
+     * فرایند شناسایی موسیقی از یک لینک را به‌صورت کامل اجرا می‌کند.
+     *
+     * لینک ابتدا برای Music Finder ارسال می‌شود. اگر بات دکمه‌ای مانند
+     * «شناسایی موسیقی» برگرداند، سرویس آن دکمه را به‌صورت خودکار انتخاب می‌کند
+     * و سپس منتظر نتیجه نهایی می‌ماند.
+     *
+     * تمام این مراحل در قالب یک عملیات فعال و تحت یک Lock انجام می‌شوند،
+     * چون کاربر در این فرایند نیازی به انتخاب مرحله‌ای ندارد و Music Finder
+     * باید همان درخواست را تا رسیدن به آهنگ نهایی ادامه دهد.
+     *
+     * در صورت نبودن دکمه موردنظر، نتیجه عدم یافتن آهنگ برگردانده می‌شود.
      */
     public function identifyFromLink(string $forPlatform, string $url, ?\Closure $onQueued = null): MusicFinderResult
     {
@@ -134,6 +232,9 @@ class MusicFinderService
 
     // ─────────────────────────────────────────────────
 
+    /**
+     * اولین دکمه‌ای را که متن آن شامل عبارت موردنظر باشد پیدا می‌کند.
+     */
     private function findButtonByText(array $rows, string $needle): ?array
     {
         foreach ($rows as $row) {
@@ -146,6 +247,31 @@ class MusicFinderService
         return null;
     }
 
+    /**
+     * یک عملیات فعال با Music Finder را با Lock اختصاصی همان بات اجرا می‌کند.
+     *
+     * هدف Lock جلوگیری از قاطی شدن درخواست‌ها و پاسخ‌های چند کاربر است؛
+     * چون چند درخواست هم‌زمان از یک Session تلگرام و یک گفت‌وگو با Music Finder
+     * استفاده می‌کنند.
+     *
+     * اگر Lock آزاد باشد، عملیات بلافاصله اجرا می‌شود.
+     *
+     * اگر درخواست دیگری در حال استفاده از Music Finder باشد، درخواست فعلی
+     * در صورت وجود callback مربوط به وضعیت صف، آن callback را اجرا کرده و
+     * سپس برای آزاد شدن Lock منتظر می‌ماند.
+     *
+     * انتظار برای Lock محدود است و در صورت تمام شدن زمان انتظار، درخواست
+     * با نتیجه خطا برمی‌گردد و برای همیشه در حالت انتظار باقی نمی‌ماند.
+     *
+     * پس از گرفتن Lock، اتصال MadelineProto ایجاد شده و عملیات اجرا می‌شود.
+     *
+     * Lock در بلوک finally آزاد می‌شود؛ بنابراین چه عملیات با موفقیت تمام شود،
+     * چه Exception یا خطای غیرمنتظره رخ دهد، Lock باقی نمی‌ماند.
+     *
+     * Lock به ازای botKey ساخته می‌شود؛ بنابراین فقط درخواست‌هایی که با یک
+     * Music Finder یکسان کار می‌کنند نسبت به یکدیگر منتظر می‌مانند و
+     * Music Finderهای مختلف می‌توانند هم‌زمان استفاده شوند.
+     */
     private function withLock(\Closure $callback, ?\Closure $onQueued = null): MusicFinderResult
     {
         $lock = Cache::lock($this->lockKey(), 90);
@@ -177,6 +303,15 @@ class MusicFinderService
         return "music_finder_lock:{$this->botKey}";
     }
 
+    /**
+     * یک درخواست MadelineProto را با مدیریت محدودیت‌ها و خطاهای Session اجرا می‌کند.
+     *
+     * در صورت دریافت FLOOD_WAIT کوتاه، اجرای درخواست برای مدت لازم متوقف و
+     * سپس مجدداً تلاش می‌شود. برای محدودیت‌های طولانی‌تر، به ادمین هشدار داده
+     * شده و خطا به فراخواننده منتقل می‌شود.
+     *
+     * خطاهای مربوط به نامعتبر شدن یا لغو Session نیز به ادمین اطلاع داده می‌شوند.
+     */
     private function guardedCall(\Closure $call, int $maxRetries = 1)
     {
         $this->respectMinimumSpacing();
@@ -209,6 +344,9 @@ class MusicFinderService
         }
     }
 
+    /**
+     * بین درخواست‌های متوالی به هر بات حداقل فاصله تعیین‌شده را رعایت می‌کند.
+     */
     private function respectMinimumSpacing(): void
     {
         $minGap = (float) config('services.music_finder_bot.min_gap_seconds', 3);
@@ -222,6 +360,9 @@ class MusicFinderService
         Cache::put($key, microtime(true), 60);
     }
 
+    /**
+     * یک هشدار را با جلوگیری از ارسال هشدارهای تکراری به ادمین ارسال می‌کند.
+     */
     private function alertAdmin(string $message): void
     {
         $alertKey = "music_finder_alerted:{$this->botKey}";
@@ -237,6 +378,10 @@ class MusicFinderService
         }
     }
 
+
+    /**
+     * آخرین پیام موجود در گفت‌وگو با بات را به‌عنوان نقطه شروع دریافت پاسخ مشخص می‌کند.
+     */
     private function lastMessageId(API $api): int
     {
         $history = $api->messages->getHistory(['peer' => $this->peerUsername, 'limit' => 1]);
@@ -247,6 +392,26 @@ class MusicFinderService
     // دریافت و تفسیر پاسخ
     // ─────────────────────────────────────────────────
 
+    /**
+     * تا دریافت یک پاسخ معتبر از Music Finder منتظر می‌ماند.
+     *
+     * این متد منتظر یک پیام مشخص از سمت بات نمی‌ماند؛ بلکه تاریخچه گفت‌وگو
+     * را به‌صورت دوره‌ای بررسی می‌کند و با استفاده از afterMessageId فقط
+     * پیام‌هایی را در نظر می‌گیرد که بعد از شروع درخواست ایجاد شده‌اند.
+     *
+     * بنابراین اگر در فاصله بین درخواست‌های مختلف پیام‌های قدیمی یا پیام‌های
+     * مربوط به درخواست قبلی در گفت‌وگو وجود داشته باشند، وارد نتیجه درخواست
+     * فعلی نمی‌شوند.
+     *
+     * پیام‌های خروجی خود Session و پیام‌های میانی مانند وضعیت جستجو،
+     * Sticker، عکس و فایل‌های غیرصوتی نامعتبر نادیده گرفته می‌شوند.
+     *
+     * در حالت audioOnly فقط زمانی نتیجه برگردانده می‌شود که پیام معتبر
+     * شامل فایل صوتی باشد.
+     *
+     * بررسی پاسخ تا رسیدن به Timeout ادامه پیدا می‌کند. اگر در این مدت
+     * پاسخ معتبر دریافت نشود، نتیجه خطا برگردانده می‌شود.
+     */
     private function waitForReply(API $api, string $forPlatform, int $afterMessageId, bool $audioOnly = false): MusicFinderResult
     {
         $timeout = (int) config('services.music_finder_bot.timeout', 40);
@@ -287,9 +452,10 @@ class MusicFinderService
     }
 
     /**
-     * پیام‌هایی که «پاسخ نهایی» نیستن و باید نادیده گرفته بشن:
-     * استیکر (نشونه‌ی «در حال جستجو»)، متن وضعیت موقتی، عکس/ویدیوی میانی بدون دکمه،
-     * و در حالت audioOnly هر چیزی جز خود فایل صوتی.
+     * مشخص می‌کند یک پیام باید به‌عنوان پیام میانی نادیده گرفته شود یا خیر.
+     *
+     * پیام‌هایی مانند Sticker، وضعیت جستجو، عکس‌های میانی و فایل‌های غیرصوتی
+     * بدون دکمه از نتیجه نهایی حذف می‌شوند.
      */
     private function shouldSkipMessage(array $message, bool $audioOnly): bool
     {
@@ -323,6 +489,9 @@ class MusicFinderService
         return false;
     }
 
+    /**
+     * بررسی می‌کند آیا Document دارای Attribute مربوط به فایل صوتی است.
+     */
     private function documentIsAudio(array $document): bool
     {
         foreach ($document['attributes'] ?? [] as $attribute) {
@@ -333,6 +502,9 @@ class MusicFinderService
         return false;
     }
 
+    /**
+     * بررسی می‌کند آیا Document دارای Attribute مربوط به Sticker است.
+     */
     private function documentIsSticker(array $document): bool
     {
         foreach ($document['attributes'] ?? [] as $attribute) {
@@ -343,6 +515,23 @@ class MusicFinderService
         return false;
     }
 
+    /**
+     * یک پیام خام دریافت‌شده از MadelineProto را به MusicFinderResult تبدیل می‌کند.
+     *
+     * اگر پیام شامل فایل صوتی باشد، ابتدا در مقصد تلگرام تلاش می‌شود فایل
+     * مستقیماً از پیام Music Finder به کانال رله منتقل شود تا نیازی به دانلود
+     * فایل روی سرور نباشد.
+     *
+     * اگر رله فعال نباشد یا انتقال مستقیم با خطا مواجه شود، فایل به‌صورت
+     * محلی دانلود می‌شود و مسیر فایل در نتیجه برگردانده می‌شود.
+     *
+     * اگر پیام شامل دکمه‌های Callback باشد، دکمه‌ها همراه callback_data و
+     * شناسه پیام منبع برگردانده می‌شوند تا کاربر بتواند بعداً یک گزینه را
+     * انتخاب کند و درخواست انتخاب را از همان پیام ادامه دهیم.
+     *
+     * اگر پیام هیچ نتیجه قابل‌استفاده‌ای نداشته باشد، به‌جای برگرداندن متن
+     * خام Music Finder، نتیجه عمومی عدم یافتن آهنگ برگردانده می‌شود.
+     */
     private function parseMessage(API $api, string $forPlatform, array $message): MusicFinderResult
     {
         $mediaType = $message['media']['_'] ?? null;
@@ -385,6 +574,9 @@ class MusicFinderService
         return MusicFinderResult::error(self::NOT_FOUND_MESSAGE);
     }
 
+    /**
+     * فایل صوتی را از تلگرام در یک مسیر موقت دانلود کرده و نتیجه فایل محلی را برمی‌گرداند.
+     */
     private function downloadAsLocalFile(API $api, array $media, ?array $audioAttr): MusicFinderResult
     {
         $tempDir = storage_path('app/private/music-finder/' . Str::uuid());
@@ -402,15 +594,11 @@ class MusicFinderService
     }
 
     /**
-     * پیام آهنگ رو مستقیم (سمت سرورهای تلگرام، بدون رد شدن از سرور خودمون)
-     * به یه کانال رله فوروارد می‌کنه که هم اکانت MadelineProto هم بات خودمون
-     * توش ادمینن؛ بعداً با copyMessage از همون کانال به کاربر می‌رسونتش —
-     * بدون هیچ دانلود/آپلود دستی.
+     * پیام صوتی را بدون دانلود فایل، مستقیماً به کانال رله تلگرام منتقل می‌کند.
      *
-     * ⚠️ نیاز به تنظیم اولیه: اکانت MadelineProto باید عضو/ادمین همون کانال
-     * (MUSIC_FINDER_RELAY_CHANNEL_ID) باشه. اگه تنظیم نشده بود یا فوروارد
-     * شکست خورد، این متد null برمی‌گردونه و فراخوان به دانلود معمولی
-     * برمی‌گرده — یعنی فیچر gracefully غیرفعال می‌شه، هیچی خراب نمی‌کنه.
+     * این روش برای کاهش مصرف منابع سرور استفاده می‌شود.
+     * در صورت غیرفعال بودن رله یا بروز خطا، null برگردانده می‌شود تا فراخواننده
+     * بتواند به روش دانلود محلی برگردد.
      */
     private function relayToTelegramChannel(API $api, array $message, ?array $audioAttr): ?MusicFinderResult
     {
@@ -447,6 +635,9 @@ class MusicFinderService
         }
     }
 
+    /**
+     * شناسه پیام ایجادشده در کانال رله را از پاسخ خام MadelineProto استخراج می‌کند.
+     */
     private function extractForwardedMessageId(array $updates): ?int
     {
         foreach ($updates['updates'] ?? [] as $update) {
@@ -457,6 +648,11 @@ class MusicFinderService
         return null;
     }
 
+    /**
+     * دکمه‌های Callback قابل‌استفاده از ساختار خام Inline Keyboard را استخراج می‌کند.
+     *
+     * دکمه‌هایی که Callback قابل‌پردازش ندارند نادیده گرفته می‌شوند.
+     */
     private function extractCallbackButtons(?array $replyMarkup): array
     {
         if (!$replyMarkup || ($replyMarkup['_'] ?? null) !== 'replyInlineMarkup') {
@@ -482,6 +678,10 @@ class MusicFinderService
         return $buttons;
     }
 
+    /**
+     * callback_data را از فرمت‌های مختلفی که ممکن است MadelineProto برگرداند
+     * به یک رشته قابل‌استفاده تبدیل می‌کند.
+     */
     private function extractCallbackData(mixed $rawData): string
     {
         if (is_string($rawData)) {

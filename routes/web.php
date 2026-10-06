@@ -12,12 +12,17 @@ use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\Admin\BotUserController;
 use App\Http\Controllers\Admin\CommentController;
 use App\Http\Controllers\Admin\MusicFinderRequestController;
+use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
+use App\Http\Controllers\Admin\SubscriptionController;
+use App\Http\Controllers\Admin\SubscriptionPlanController;
+use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\TestController;
 use App\Http\Middleware\AdminMiddleware;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [TestController::class, 'index']);
-
+Route::get('/pay/{token}', [PaymentController::class, 'redirect'])->name('payment.redirect');
+Route::get('/pay/{token}/callback', [PaymentController::class, 'callback'])->name('payment.callback');
 
 // ─── روت‌های ادمین ───────────────────────────────────────────
 Route::prefix('admin_page')->name('admin.')->group(function () {
@@ -85,6 +90,17 @@ Route::prefix('admin_page')->name('admin.')->group(function () {
         Route::resource('comments', CommentController::class)->only(['index', 'update', 'destroy']);
         Route::post('comments/{comment}/update-status', [CommentController::class, 'updateStatus'])->name('comments.update-status');
 
+        //درخواست آهنگ از سرویس آهنگ یاب
         Route::get('music-finder-requests', [MusicFinderRequestController::class, 'index'])->name('music-finder-requests.index');
+
+        //پرداخت ها
+        Route::resource('subscription-plans', SubscriptionPlanController::class);
+        Route::post('subscription-plans/{subscriptionPlan}/toggle-active', [SubscriptionPlanController::class, 'toggleActive'])
+            ->name('subscription-plans.toggle-active');
+
+        Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions.index');
+
+        Route::get('payments', [AdminPaymentController::class, 'index'])->name('payments.index');
+        Route::post('payments/{payment}/verify-now', [AdminPaymentController::class, 'verifyNow'])->name('payments.verify-now');
     });
 });

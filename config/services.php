@@ -59,4 +59,16 @@ return [
         'relay_channel_id'           => env('MUSIC_FINDER_RELAY_CHANNEL_ID'),
     ],
 
+    'zarinpal' => [
+        'merchant_id' => env('ZARINPAL_MERCHANT_ID'),
+        'sandbox'     => env('ZARINPAL_SANDBOX', false),
+    ],
+
+    'payment' => [
+        'default_gateway'        => env('PAYMENT_DEFAULT_GATEWAY', 'zarinpal'),
+        'created_expiry_hours'   => env('PAYMENT_CREATED_EXPIRY_HOURS', 24),
+        'pending_expiry_hours'   => env('PAYMENT_PENDING_EXPIRY_HOURS', 24),
+        'cleanup_retention_days' => env('PAYMENT_CLEANUP_RETENTION_DAYS', 90),
+    ],
+
 ];

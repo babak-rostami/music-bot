@@ -19,7 +19,8 @@
         "league/csv": "*",
         "league/flysystem-ftp": "^3.0",
         "morilog/jalali": "3.*",
-        "symfony/dom-crawler": "*"
+        "symfony/dom-crawler": "*",
+        "zarinpal/zarinpal-php-sdk": "*"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

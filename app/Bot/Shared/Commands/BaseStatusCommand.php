@@ -17,8 +17,8 @@ abstract class BaseStatusCommand
         $chatId = $message['chat']['id'];
         $userId = $message['from']['id'];
 
-        $limit = (int) config('services.music_finder_bot.free_requests_limit', 3);
-        $windowHours = (int) config('services.music_finder_bot.free_requests_window_hours', 12);
+        ['limit' => $limit, 'window_hours' => $windowHours] = MusicFinderUsageService::currentLimits($this->platform(), $userId);
+
         $remaining = MusicFinderUsageService::remainingCount($this->platform(), $userId);
 
         $text = "💎 وضعیت درخواست‌های امروز\n\n"

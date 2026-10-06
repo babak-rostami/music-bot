@@ -16,7 +16,7 @@ interface BotApiInterface
 
     public function sendAudioByFileId(int|string $chatId, string $fileId, string $title, string $performer);
 
-    public function answerCallbackQuery(string $callbackQueryId, ?string $text = null);
+    public function answerCallbackQuery(string $callbackQueryId, ?string $text = null, bool $showAlert = false);
 
     public function uploadAudioToCacheChannel(string $filePath, $song): ?array;
 

@@ -10,6 +10,8 @@ use App\Bot\Shared\BotApiInterface;
 use App\Bot\Shared\MembershipService;
 use App\Bot\Telegram\MessageProcessor;
 use App\Services\AdminNotifier;
+use App\Services\Payment\PaymentService;
+use App\Services\Payment\SubscriptionPricingService;
 use App\Services\SongReactionService;
 use App\Services\SongUploadService;
 use Illuminate\Http\Request;
@@ -25,6 +27,8 @@ class TelegramActionService extends BaseBotActionService
         SongUploadService $songUploadService,
         SongReactionService $reactionService,
         MessageProcessor $messageProcessor,
+        PaymentService $paymentService,
+        SubscriptionPricingService $pricingService,
     ) {
         parent::__construct(
             $botUserService,
@@ -34,7 +38,9 @@ class TelegramActionService extends BaseBotActionService
             $adminService,
             $songUploadService,
             $reactionService,
-            $messageProcessor
+            $messageProcessor,
+            $paymentService,
+            $pricingService
         );
     }
 
@@ -74,9 +80,5 @@ class TelegramActionService extends BaseBotActionService
         $messageId = $message['message_id'];
 
         $bot->copyMessage($chatId, $messageId);
-        // $bot->sendMessage(
-        //     $chatId,
-        //     "🎵 فایل فرستادی؟\n\nتوی صف جستجو قرار گرفت 🔎\nوقتی پیدا شد آهنگ رو همینجا برات ارسال میکنم 🫡⚡️\n"
-        // );
     }
 }

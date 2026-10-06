@@ -80,4 +80,6 @@ return [
 
     'public_songs_base_url' => env('PUBLIC_SONGS_BASE_URL', 'https://musbot.becharkh.com'),
 
+    'bot_username'      => env('TELEGRAM_BOT_USERNAME'),
+    'bale_bot_username' => env('BALE_BOT_USERNAME'),
 ];

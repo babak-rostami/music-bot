@@ -10,6 +10,8 @@ use App\Bot\Shared\BotAdminService;
 use App\Bot\Shared\BotApiInterface;
 use App\Bot\Shared\MembershipService;
 use App\Services\AdminNotifier;
+use App\Services\Payment\PaymentService;
+use App\Services\Payment\SubscriptionPricingService;
 use App\Services\SongReactionService;
 use App\Services\SongUploadService;
 use Illuminate\Http\Request;
@@ -25,6 +27,8 @@ class BaleActionService extends BaseBotActionService
         SongUploadService $songUploadService,
         SongReactionService $reactionService,
         MessageProcessor $messageProcessor,
+        PaymentService $paymentService,
+        SubscriptionPricingService $pricingService,
     ) {
         parent::__construct(
             $botUserService,
@@ -34,7 +38,9 @@ class BaleActionService extends BaseBotActionService
             $adminService,
             $songUploadService,
             $reactionService,
-            $messageProcessor
+            $messageProcessor,
+            $paymentService,
+            $pricingService
         );
     }
 

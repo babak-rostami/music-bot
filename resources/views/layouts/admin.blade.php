@@ -93,6 +93,25 @@
         {{ request()->routeIs('admin.music-finder-requests.*') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
                     <span>🎯</span> درخواست‌های آهنگ‌یاب
                 </a>
+
+                <a href="{{ route('admin.subscription-plans.index') }}"
+                    class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
+        {{ request()->routeIs('admin.subscription-plans.*') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                    <span>💎</span> پلن‌های اشتراک
+                </a>
+
+                <a href="{{ route('admin.payments.index') }}"
+                    class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
+        {{ request()->routeIs('admin.payments.*') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                    <span>💰</span> پرداخت‌ها
+                </a>
+
+                <a href="{{ route('admin.subscriptions.index') }}"
+                    class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition
+        {{ request()->routeIs('admin.subscriptions.*') ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900' }}">
+                    <span>📜</span> اشتراک‌ها
+                </a>
+
             </nav>
 
             {{-- خروج --}}

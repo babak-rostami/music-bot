@@ -6,6 +6,7 @@ use App\Bot\Bale\Commands\BaleHelpCommand;
 use App\Bot\Bale\Commands\BaleSearchCommand;
 use App\Bot\Bale\Commands\BaleStartCommand;
 use App\Bot\Bale\Commands\BaleStatusCommand;
+use App\Bot\Bale\Commands\BaleUpgradeCommand;
 use App\Bot\Bale\Services\BaleService;
 use App\Bot\Shared\MessageProcessorInterface;
 
@@ -17,6 +18,7 @@ class MessageProcessor implements MessageProcessorInterface
         BaleStartCommand $startCommand,
         BaleHelpCommand $helpCommand,
         BaleStatusCommand $statusCommand,
+        BaleUpgradeCommand $upgradeCommand,
         BaleSearchCommand $searchCommand,
         protected BaleService $baleService,
     ) {
@@ -24,6 +26,7 @@ class MessageProcessor implements MessageProcessorInterface
             $startCommand,
             $helpCommand,
             $statusCommand,
+            $upgradeCommand,
             $searchCommand,
         ];
     }

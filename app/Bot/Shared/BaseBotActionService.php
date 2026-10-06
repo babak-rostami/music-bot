@@ -4,6 +4,7 @@ namespace App\Bot\Shared;
 
 use App\Bot\BotUserService;
 use App\Bot\NotificationService;
+use App\Enums\SubscriptionDuration;
 use App\Models\Song;
 use App\Models\SongRequest;
 use App\Services\AdminNotifier;
@@ -14,10 +15,34 @@ use App\Services\SongUploadService;
 use App\Jobs\MusicFinderJob;
 use App\Jobs\ProcessBaleMusicDownloadJob;
 use App\Jobs\ProcessMusicDownloadJob;
+use App\Models\SubscriptionPlan;
+use App\Services\Payment\PaymentService;
+use App\Services\Payment\SubscriptionPricingService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
+/**
+ * منطق مشترک پردازش پیام‌ها و Callbackهای بات‌ها.
+ *
+ * این کلاس بخش‌هایی از رفتار بات را که بین پلتفرم‌های مختلف
+ * مثل تلگرام و بله مشترک هستند پیاده‌سازی می‌کند.
+ *
+ * بعد کلاس‌های مربوط به هر پلتفرم فقط تفاوت‌های مخصوص همان پلتفرم را
+ * از طریق متدهای abstract پیاده‌سازی می‌کنند.
+ *
+ * جریان کلی پردازش پیام:
+ * - بررسی پیام‌های گروه و کانال
+ * - ثبت نام کاربر و اطلاع‌رسانی
+ * - مدیریت دستورات ادمین
+ * - پردازش لینک دانلود مستقیم
+ * - بررسی عضویت کانال‌ها
+ * - شناسایی محتوای موسیقی
+ * - ارسال پیام به Command Processor
+ *
+ * همچنین Callbackهای مربوط به جستجوی آهنگ، واکنش به آهنگ،
+ * عضویت، درخواست آهنگ و خرید اشتراک در این کلاس مدیریت می‌شوند.
+ */
 abstract class BaseBotActionService
 {
     private const MAX_SEARCH_TEXT_LENGTH = 200;
@@ -31,6 +56,8 @@ abstract class BaseBotActionService
         protected SongUploadService $songUploadService,
         protected SongReactionService $reactionService,
         protected MessageProcessorInterface $messageProcessor,
+        protected PaymentService $paymentService,
+        protected SubscriptionPricingService $pricingService,
     ) {}
 
     // ─────────────────────────────────────────────────
@@ -52,6 +79,21 @@ abstract class BaseBotActionService
     // Template Methodهای اصلی
     // ─────────────────────────────────────────────────
 
+    /**
+     * یک پیام دریافتی از بات را پردازش و به جریان مناسب هدایت می‌کند.
+     *
+     * ابتدا پیام‌های گروه و کانال نادیده گرفته می‌شوند
+     * کاربر در صورت نیاز ثبت نام و اطلاع‌رسانی می‌شود.
+     *
+     * سپس موارد خاص مانند عملیات ادمین و لینک دانلود مستقیم بررسی می‌شوند.
+     *
+     * برای کاربران عادی، ابتدا وضعیت عضویت در کانال‌ها بررسی می‌شود.
+     * در صورت کامل بودن عضویت، پیام بر اساس نوع محتوا به مسیر مناسب
+     * مانند شناسایی آهنگ، پردازش لینک یا پردازش دستورات ارسال می‌شود.
+     *
+     * اگر عضویت کامل نباشد، پیام کاربر موقتاً ذخیره شده و پیام درخواست
+     * عضویت برای او ارسال می‌شود تا بعد از تأیید عضویت، پیام قبلی پردازش شود.
+     */
     protected function processMessage(array $message): void
     {
         // اگه پیام از کانال یا گروه اومده بود نادیده بگیر
@@ -64,8 +106,10 @@ abstract class BaseBotActionService
         $userName = $this->resolveUserName($message['from']);
         $chatId   = $message['chat']['id'];
 
+        // ثبت نام کاربر
         $this->registerAndMaybeNotify($bot, $message, $userId);
 
+        // اگه ادمین داشت کاری میکرد یا کامندی فرستاده بود
         if ($this->adminService->isAdmin($bot, (int) $userId)) {
             if ($this->adminService->hasActiveFlow($bot, (int) $userId)) {
                 $this->adminService->handleMessage($bot, $message);
@@ -77,12 +121,14 @@ abstract class BaseBotActionService
         }
 
         // اگه لینک دانلود از سایت بود همون آهنگ رو براش بفرست
-        // عضویت هم لازم نیست، بعد این چک میشه
+        // عضویت هم لازم نیست
+        // منظور start dl_id
         if ($songId = $this->extractDirectDownloadSongId($message)) {
             $this->dispatchDirectDownload($chatId, $songId);
             return;
         }
 
+        // بررسی عضویت در کانال های اسپانسر
         $missing = $this->membershipService->getMissingChannels($bot, $userId);
 
         if (empty($missing)) {
@@ -94,8 +140,8 @@ abstract class BaseBotActionService
                 return;
             }
 
+            // فایل ویدیو و صوت فرستاده بود برو سراغ سرویس آهنگ یاب
             $identifiableFileId = $message['audio']['file_id'] ?? $message['video']['file_id'] ?? $message['voice']['file_id'] ?? null;
-
             if ($identifiableFileId) {
                 if (MusicFinderAccess::allowed($this->platform(), (int) $userId)) {
                     $type = isset($message['audio']) ? 'audio' : (isset($message['video']) ? 'video' : 'voice');
@@ -105,6 +151,7 @@ abstract class BaseBotActionService
                 }
             }
 
+            // بقیه انواع مدیا بود کپی کن تو کانال کش
             if ($this->isMediaMessage($message)) {
                 $this->handleGenericMediaMessage($bot, $message);
                 return;
@@ -112,6 +159,7 @@ abstract class BaseBotActionService
 
             $text = trim($message['text'] ?? '');
 
+            // اگه لینک اینستا و یوتیوب و تیک تاک بود برو سراغ سرویس آهنگ یاب
             if ($text !== '' && $this->isMusicFinderLink($text)) {
                 if (MusicFinderAccess::allowed($this->platform(), (int) $userId)) {
                     $this->dispatchLinkIdentification($bot, $chatId, $text);
@@ -121,6 +169,7 @@ abstract class BaseBotActionService
                 return;
             }
 
+            // بریم سراغ پردازش کامند ها و متن ساده
             $this->routeToCommandProcessor($bot, $message);
             return;
         }
@@ -133,6 +182,18 @@ abstract class BaseBotActionService
         }
     }
 
+    /**
+     * یک Callback دریافتی از دکمه‌های بات را پردازش می‌کند.
+     *
+     * Callback ابتدا بر اساس اولویت بررسی می‌شود؛ از جمله:
+     * - عملیات ادمین
+     * - واکنش به آهنگ
+     * - انتخاب نتیجه Music Finder
+     * - بررسی عضویت
+     *
+     * پس از بررسی دسترسی عضویت، Callbackهای مربوط به آهنگ،
+     * درخواست آهنگ و خرید اشتراک به Handler مربوطه ارسال می‌شوند.
+     */
     protected function processCallback(array $callback): void
     {
         $bot       = $this->bot();
@@ -179,15 +240,16 @@ abstract class BaseBotActionService
             return;
         }
 
-        //اگه روی دکمه های آهنگ خودمون کلیک کرد
         if (str_starts_with($data, 'song_')) {
             $songId = (int) str_replace('song_', '', $data);
             $this->songUploadService->findBestLinkAndSend($callback, $songId, $chatId, $bot);
         } elseif (str_starts_with($data, 'request_song_')) {
-            // اگه روی دکمه جستجوی پیشرفته کلیک کرد
-            // اول درخواست ذخیره میشه بعد ارسال میشه به سرویس های آهنگ یاب
             $token = str_replace('request_song_', '', $data);
             $this->handleSongRequestClick($bot, $callback['id'], $token, $chatId, $messageId);
+        } elseif (str_starts_with($data, 'plan_select_')) {
+            $this->handlePlanSelectCallback($bot, $callback);
+        } elseif (str_starts_with($data, 'plan_duration_')) {
+            $this->handlePlanDurationCallback($bot, $callback);
         }
     }
 
@@ -195,6 +257,13 @@ abstract class BaseBotActionService
     // منطق‌های مشترک
     // ─────────────────────────────────────────────────
 
+    /**
+     * پیام دریافتی کاربر را ثبت می‌کند و در صورت نیاز اطلاع‌رسانی مربوط به
+     * دریافت پیام را انجام می‌دهد.
+     *
+     * خطای ثبت یا اطلاع‌رسانی نباید باعث توقف پردازش پیام شود؛
+     * بنابراین خطا فقط در لاگ ثبت می‌شود.
+     */
     private function registerAndMaybeNotify(BotApiInterface $bot, array $message, int $userId): void
     {
         try {
@@ -224,6 +293,7 @@ abstract class BaseBotActionService
 
     private function routeToCommandProcessor(BotApiInterface $bot, array $message): void
     {
+        // اگه متن طولانی بود الکی پردازش نکن اول بهش بگو تا درست بفرسته
         $text = trim($message['text'] ?? '');
 
         if ($text !== '' && !str_starts_with($text, '/') && mb_strlen($text) > self::MAX_SEARCH_TEXT_LENGTH) {
@@ -266,6 +336,13 @@ abstract class BaseBotActionService
 
     // ─── جستجوی پیشرفته (MusicFinder) ───
 
+    /**
+     * درخواست شناسایی فایل صوتی یا ویدیویی را برای پردازش پس‌زمینه ارسال می‌کند.
+     *
+     * ابتدا سهمیه و وضعیت پردازش هم‌زمان کاربر بررسی می‌شود.
+     * سپس فایل از پلتفرم دریافت و به‌صورت موقت روی سرور ذخیره می‌شود
+     * و در نهایت جاب مربوط به Music Finder برای پردازش فایل Dispatch می‌شود.
+     */
     private function dispatchMediaIdentification(BotApiInterface $bot, int|string $chatId, string $fileId, string $type): void
     {
         if ($quotaMessage = MusicFinderUsageService::guard($this->platform(), $chatId)) {
@@ -393,8 +470,112 @@ abstract class BaseBotActionService
         );
     }
 
-    // ─── چک عضویت ───
+    /**
+     * بعد از انتخاب پلن، گزینه‌های مدت اشتراک و قیمت نهایی هر مدت را نمایش می‌دهد.
+     *
+     * در این مرحله هیچ Payment یا Purchaseای ایجاد نمی‌شود.
+     * فقط پلن انتخاب‌شده بررسی شده و پیام قبلی با گزینه‌های مدت اشتراک ویرایش می‌شود.
+     */
+    private function handlePlanSelectCallback(BotApiInterface $bot, array $callback): void
+    {
+        $planId = (int) str_replace('plan_select_', '', $callback['data']);
+        $plan = SubscriptionPlan::where('is_active', true)->find($planId);
+        $chatId = $callback['message']['chat']['id'];
+        $messageId = $callback['message']['message_id'];
 
+        if (!$plan) {
+            $bot->answerCallbackQuery($callback['id'], '❌ این پلن دیگه موجود نیست.', showAlert: true);
+            return;
+        }
+
+        $bot->answerCallbackQuery($callback['id']);
+
+        $buttons = [];
+        foreach (SubscriptionDuration::cases() as $duration) {
+            $price = $this->pricingService->finalPrice($plan, $duration);
+            $note = $duration->badgeNote() ? " — {$duration->badgeNote()}" : '';
+
+            $buttons[] = [[
+                'text' => "{$duration->label()}{$note} — " . number_format($price) . " تومان {$duration->emoji()}",
+                'callback_data' => "plan_duration_{$plan->id}_{$duration->value}",
+            ]];
+        }
+
+        $bot->editMessageText(
+            $chatId,
+            $messageId,
+            "💎 انتخاب مدت اشتراک\n\n"
+                . "پلن {$plan->display_title} رو انتخاب کردی. 👌\n"
+                . "حالا مدت فعال‌سازی رو انتخاب کن:\n\n"
+                . "۳ ماهه — ۱۰٪ تخفیف\n"
+                . "۶ ماهه — ۲۰٪ تخفیف",
+            $buttons
+        );
+    }
+
+    /**
+     * بعد از انتخاب مدت اشتراک، Purchase و Payment را ایجاد کرده و
+     * کاربر را برای پرداخت به درگاه هدایت می‌کند.
+     *
+     * پلن و مدت اشتراک دوباره از ورودی Callback استخراج و از دیتابیس بررسی می‌شوند
+     * تا فقط پلن فعال و مدت معتبر قابل استفاده باشد.
+     *
+     * برای جلوگیری از ایجاد چند Payment در اثر دابل‌کلیک یا دریافت مجدد Callback،
+     * برای هر کاربر یک Lock کوتاه‌مدت ایجاد می‌شود.
+     *
+     * ساخت Purchase و Payment و آماده‌سازی درگاه توسط PaymentService انجام می‌شود؛
+     * این متد فقط جریان تعامل بات با کاربر را مدیریت می‌کند.
+     *
+     * در پایان، پیام قبلی با یک دکمه لینک مستقیم به درگاه پرداخت جایگزین می‌شود.
+     */
+    private function handlePlanDurationCallback(BotApiInterface $bot, array $callback): void
+    {
+        $parts = explode('_', $callback['data']); // ['plan', 'duration', '{planId}', '{months}']
+        $planId = (int) ($parts[2] ?? 0);
+        $months = (int) ($parts[3] ?? 0);
+
+        $chatId = $callback['message']['chat']['id'];
+        $messageId = $callback['message']['message_id'];
+        $userId = $callback['from']['id'];
+
+        $plan = SubscriptionPlan::where('is_active', true)->find($planId);
+        $duration = SubscriptionDuration::tryFrom($months);
+
+        if (!$plan || !$duration) {
+            $bot->answerCallbackQuery($callback['id'], '❌ این گزینه دیگه معتبر نیست، دوباره /upgrade بزن.', showAlert: true);
+            return;
+        }
+
+        // محافظت در برابر دابل‌کلیک سریع یا redeliver شدن همون callback از سمت تلگرام/بله
+        $lock = Cache::lock("create-payment:{$this->platform()}:{$userId}", 10);
+        if (!$lock->get()) {
+            $bot->answerCallbackQuery($callback['id'], '⏳ در حال پردازش درخواست قبلیته...');
+            return;
+        }
+
+        try {
+            $payment = $this->paymentService->createPurchaseAndPayment($this->platform(), $userId, $plan, $duration);
+            $gatewayUrl = $this->paymentService->redirectToGateway($payment);
+
+            $bot->answerCallbackQuery($callback['id'], '✅ در حال انتقال به درگاه پرداخت...');
+
+            $bot->editMessageText(
+                $chatId,
+                $messageId,
+                "✅ {$plan->display_title} ({$duration->label()}) — " . number_format($payment->amount_toman) . " تومان\n\nبرای پرداخت روی دکمه زیر بزن:",
+                [[
+                    ['text' => '💳 پرداخت', 'url' => $gatewayUrl],
+                ]]
+            );
+        } catch (\Throwable $e) {
+            Log::error('Failed to create payment from duration callback', ['error' => $e->getMessage()]);
+            $bot->answerCallbackQuery($callback['id'], '❌ خطا در اتصال به درگاه، دوباره امتحان کن.', showAlert: true);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    // ─── چک عضویت ───
     private function handleMembershipCheck(
         BotApiInterface $bot,
         string $callbackQueryId,
