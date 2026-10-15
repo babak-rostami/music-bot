@@ -166,7 +166,7 @@
 
                             <td class="py-3 px-5">
                                 <div class="flex items-center justify-center gap-2">
-                                    <a href="https://music.becharkh.com/songs/{{ $song->slug }}" target="_blank" rel="noopener"
+                                    <a href="https://saz.becharkh.com/songs/{{ $song->slug }}" target="_blank" rel="noopener"
                                         title="نمایش"
                                         class="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

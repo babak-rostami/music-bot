@@ -106,7 +106,7 @@
                                     </td>
                                     <td class="py-3 px-5 max-w-[280px] truncate">
                                         @if($item->song)
-                                            <a href="https://music.becharkh.com/songs/{{ $item->song->slug }}" target="_blank"
+                                            <a href="https://saz.becharkh.com/songs/{{ $item->song->slug }}" target="_blank"
                                                 class="text-indigo-600 hover:underline">
                                                 {{ $item->song->title }} — {{ $item->song->artist_name }}
                                             </a>

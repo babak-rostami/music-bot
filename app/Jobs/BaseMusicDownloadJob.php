@@ -180,7 +180,7 @@ abstract class BaseMusicDownloadJob implements ShouldQueue
         if (count($lines) > 10) {
             $displayText = implode("\n", array_slice($lines, 0, 10)) . "\n...";
 
-            $baseUrl = $song->show_in_saz_site == 1 ? "https://saz.becharkh.com/songs/" : "https://music.becharkh.com/songs/";
+            $baseUrl = "https://saz.becharkh.com/songs/";
             $url = $baseUrl . $song->slug;
 
             $inlineKeyboard = [[['text' => 'مشاهده متن کامل آهنگ', 'url' => $url]]];
