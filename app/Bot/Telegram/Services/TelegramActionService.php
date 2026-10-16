@@ -88,6 +88,10 @@ class TelegramActionService extends BaseBotActionService
         $chatId = $message['chat']['id'];
         $messageId = $message['message_id'];
 
-        $bot->copyMessage($chatId, $messageId);
+        // مدیای کاربرها جدا از کانال کش آهنگ‌ها (cache_channel_id) نگه داشته می‌شه
+        // تا اون کانال فقط برای file_id آهنگ‌های واقعی باقی بمونه. اگه
+        // user_media_channel_id تنظیم نشده باشه، copyMessage خودش برمی‌گرده
+        // به cache_channel_id (رفتار قبلی).
+        $bot->copyMessage($chatId, $messageId, config('telegram.user_media_channel_id'));
     }
 }

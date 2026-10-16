@@ -80,7 +80,11 @@ class BaleActionService extends BaseBotActionService
         $chatId = $message['chat']['id'];
         $messageId = $message['message_id'];
 
-        $bot->forwardMessage($chatId, $messageId);
+        // مدیای کاربرها جدا از کانال کش آهنگ‌ها (bale_cache_channel_id) نگه داشته
+        // می‌شه تا اون کانال فقط برای file_id آهنگ‌های واقعی باقی بمونه. اگه
+        // bale_user_media_channel_id تنظیم نشده باشه، forwardMessage خودش
+        // برمی‌گرده به bale_cache_channel_id (رفتار قبلی).
+        $bot->forwardMessage($chatId, $messageId, config('telegram.bale_user_media_channel_id'));
         // $bot->sendMessage(
         //     $chatId,
         //     "✅ فایلی که فرستادی با موفقیت ثبت شد\n\nآهنگ توی صف دانلود قرار گرفت 🔎\n\n💎🫡 وقتی آماده شد، همینجا برات ارسال میکنم!"
