@@ -61,7 +61,16 @@ class TelegramActionService extends BaseBotActionService
 
     protected function isGroupOrChannelMessage(array $message): bool
     {
-        return false; // بات تلگرام همیشه پیام‌های خصوصی رو پردازش می‌کنه
+        // قبلاً این متد همیشه false برمی‌گردوند (با این توجیه که «بات تلگرام
+        // همیشه پیام‌های خصوصی رو پردازش می‌کنه»)، در حالی که هدف واقعی متد
+        // دقیقاً برعکسه: تشخیص اینکه پیام از گروه/کانال اومده تا نادیده گرفته
+        // بشه. مقدار ثابت false یعنی اگه بات به هر دلیلی (حتی تصادفی) عضو یه
+        // گروه/سوپرگروه بشه، پیام‌های اون گروه هم دقیقاً مثل پیام خصوصی کاربر
+        // پردازش می‌شدن — ثبت BotUser، جستجوی آهنگ، همه‌چی. اینجا مثل نسخه‌ی
+        // بله، واقعاً نوع چت رو چک می‌کنیم.
+        $chatType = $message['chat']['type'] ?? 'private';
+
+        return $chatType !== 'private';
     }
 
     protected function resolveUserName(array $from): string

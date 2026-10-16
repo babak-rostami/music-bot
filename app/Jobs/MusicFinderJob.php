@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Bot\Bale\Services\BaleService;
+use App\Bot\Shared\BotApiInterface;
 use App\Bot\Telegram\Services\TelegramService;
 use App\Services\MusicFinder\MusicFinderAccess;
 use App\Services\MusicFinder\MusicFinderBotRegistry;
@@ -67,7 +68,7 @@ class MusicFinderJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 1;
-    public int $timeout = 90;
+    public int $timeout = 180;
 
     /**
      * اطلاعات لازم برای اجرای یک درخواست Music Finder را در Job ذخیره می‌کند.
@@ -75,6 +76,11 @@ class MusicFinderJob implements ShouldQueue
      * mode مشخص می‌کند چه نوع عملیاتی باید انجام شود.
      *  در حالت select، botKey، sourceMessageId و callbackData برای ادامه دادن انتخاب کاربر
      * از پیام قبلی Music Finder استفاده می‌شوند.
+     *
+     * برای mode=media، دانلود فایل عمداً قبل از Dispatch شدن Job انجام نمی‌شود
+     * (ممکنه بسته به حجم فایل چند ثانیه تا چند دقیقه طول بکشه و وب‌هوک ورودی رو
+     * معطل نگه داره)؛ به‌جاش mediaFileId (file_id خام تلگرام/بله) پاس داده می‌شود
+     * و خود Job، داخل صف، دانلودش می‌کند و mediaPath را پر می‌کند.
      */
     public function __construct(
         public string $platform,
@@ -87,6 +93,7 @@ class MusicFinderJob implements ShouldQueue
         public ?string $callbackData = null,
         public ?string $originalQuery = null,
         public ?string $botKey = null,     // فقط برای mode=select — کدوم بات دکمه رو نشون داده بود
+        public ?string $mediaFileId = null, // فقط برای mode=media — file_id خامی که باید داخل Job دانلود بشه
     ) {}
 
     /**
@@ -113,19 +120,30 @@ class MusicFinderJob implements ShouldQueue
     {
         $service = $this->platform === 'bale' ? app(BaleService::class) : app(TelegramService::class);
 
-        // برای «select» حتماً باید همون باتی که دکمه رو نشون داده بود صدا بزنیم؛
-        // برای بقیه‌ی حالت‌ها، یه بات جدید به‌صورت یکی‌درمیون انتخاب می‌شه.
-        $finder = $this->mode === 'select'
-            ? MusicFinderBotRegistry::get($this->botKey ?? '')
-            : MusicFinderBotRegistry::next();
-
-        // اگه یه نفر دیگه در حال استفاده از سرویس باشه بهش میگه صبر کن
-        $onQueued = fn() => $service->sendMessage(
-            $this->chatId,
-            '⏳ سرویس مشغوله، چند لحظه صبر کن تا نوبتت برسه...'
-        );
-
         try {
+            // برای mode=media، فایل عمداً قبل از Dispatch دانلود نشده (دلیلش توی
+            // داکیومنت سازنده‌ی کلاس توضیح داده شده) — اینجا، داخل صف، دانلودش می‌کنیم.
+            if ($this->mode === 'media' && $this->mediaFileId && !$this->mediaPath) {
+                $this->mediaPath = $this->downloadMediaFile($service);
+
+                if (!$this->mediaPath) {
+                    $service->sendMessage($this->chatId, '❌ دریافت فایل ناموفق بود.');
+                    return;
+                }
+            }
+
+            // برای «select» حتماً باید همون باتی که دکمه رو نشون داده بود صدا بزنیم؛
+            // برای بقیه‌ی حالت‌ها، یه بات جدید به‌صورت یکی‌درمیون انتخاب می‌شه.
+            $finder = $this->mode === 'select'
+                ? MusicFinderBotRegistry::get($this->botKey ?? '')
+                : MusicFinderBotRegistry::next();
+
+            // اگه یه نفر دیگه در حال استفاده از سرویس باشه بهش میگه صبر کن
+            $onQueued = fn() => $service->sendMessage(
+                $this->chatId,
+                '⏳ سرویس مشغوله، چند لحظه صبر کن تا نوبتت برسه...'
+            );
+
             $result = match ($this->mode) {
                 'text'   => $finder->sendText($this->platform, $this->text, $onQueued),
                 'link'   => $finder->identifyFromLink($this->platform, $this->text, $onQueued),
@@ -140,6 +158,48 @@ class MusicFinderJob implements ShouldQueue
             }
             MusicFinderAccess::release($this->platform, $this->chatId);
         }
+    }
+
+    /**
+     * فایل صوتی/ویدیویی/Voice ارسالی کاربر را با file_id از تلگرام/بله دانلود
+     * و مسیر محلی فایل را برمی‌گرداند.
+     *
+     * این دانلود عمداً داخل Job (توی صف) انجام می‌شود، نه قبل از Dispatch شدن
+     * Job، تا پاسخ وب‌هوک ورودی معطل دانلود فایل نماند — توضیح کامل‌ترش توی
+     * داکیومنت سازنده‌ی کلاس هست.
+     *
+     * در صورت شکست دانلود، فایل نیمه‌کاره و پوشه‌ی موقت (در صورت وجود) هم
+     * پاک می‌شوند تا روی دیسک باقی نمانند.
+     */
+    private function downloadMediaFile(BotApiInterface $service): ?string
+    {
+        $file = $service->getFile($this->mediaFileId);
+        if (!$file || empty($file['file_path'])) {
+            return null;
+        }
+
+        $tempDir = storage_path('app/private/music-finder-incoming/' . Str::uuid());
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        $ext = match ($this->mediaType) {
+            'voice' => 'ogg',
+            'video' => 'mp4',
+            default => 'mp3',
+        };
+        $localPath = "{$tempDir}/incoming.{$ext}";
+
+        if ($service->downloadFile($file['file_path'], $localPath)) {
+            return $localPath;
+        }
+
+        if (file_exists($localPath)) {
+            @unlink($localPath);
+        }
+        @rmdir($tempDir);
+
+        return null;
     }
 
     /**

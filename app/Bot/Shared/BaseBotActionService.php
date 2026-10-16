@@ -20,7 +20,6 @@ use App\Services\Payment\PaymentService;
 use App\Services\Payment\SubscriptionPricingService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 /**
  * منطق مشترک پردازش پیام‌ها و Callbackهای بات‌ها.
@@ -339,9 +338,15 @@ abstract class BaseBotActionService
     /**
      * درخواست شناسایی فایل صوتی یا ویدیویی را برای پردازش پس‌زمینه ارسال می‌کند.
      *
-     * ابتدا سهمیه و وضعیت پردازش هم‌زمان کاربر بررسی می‌شود.
-     * سپس فایل از پلتفرم دریافت و به‌صورت موقت روی سرور ذخیره می‌شود
-     * و در نهایت جاب مربوط به Music Finder برای پردازش فایل Dispatch می‌شود.
+     * ابتدا سهمیه و وضعیت پردازش هم‌زمان کاربر بررسی می‌شود (هر دو فقط Cache/DB
+     * سریع هستن، مشکلی برای پاسخ سریع وب‌هوک ندارن).
+     *
+     * دانلود خود فایل عمداً اینجا انجام نمی‌شه: بسته به حجم ویدیو/صدا (تا ۱۵-۲۰
+     * مگابایت طبق راهنمای بات) و کندی شبکه، دانلود می‌تونه چند ثانیه تا چند دقیقه
+     * طول بکشه؛ اگه همینجا، توی پاسخ وب‌هوک، منتظرش بمونیم، درخواست پاسخ‌گویی به
+     * تلگرام/بله به‌موقع برنمی‌گرده و ممکنه باعث Timeout و ارسال دوباره‌ی همون
+     * Update بشه. برای همین فقط file_id خام پاس داده می‌شه و دانلود واقعی داخل
+     * MusicFinderJob (توی صف) انجام می‌گیره.
      */
     private function dispatchMediaIdentification(BotApiInterface $bot, int|string $chatId, string $fileId, string $type): void
     {
@@ -355,32 +360,7 @@ abstract class BaseBotActionService
             return;
         }
 
-        $file = $bot->getFile($fileId);
-        if (!$file || empty($file['file_path'])) {
-            MusicFinderAccess::release($this->platform(), $chatId);
-            $bot->sendMessage($chatId, '❌ دریافت فایل ناموفق بود.');
-            return;
-        }
-
-        $tempDir = storage_path('app/private/music-finder-incoming/' . Str::uuid());
-        if (!is_dir($tempDir)) {
-            mkdir($tempDir, 0755, true);
-        }
-
-        $ext = match ($type) {
-            'voice' => 'ogg',
-            'video' => 'mp4',
-            default => 'mp3'
-        };
-        $localPath = "{$tempDir}/incoming.{$ext}";
-
-        if (!$bot->downloadFile($file['file_path'], $localPath)) {
-            MusicFinderAccess::release($this->platform(), $chatId);
-            $bot->sendMessage($chatId, '❌ دریافت فایل ناموفق بود.');
-            return;
-        }
-
-        MusicFinderJob::dispatch($this->platform(), $chatId, 'media', mediaPath: $localPath, mediaType: $type)
+        MusicFinderJob::dispatch($this->platform(), $chatId, 'media', mediaType: $type, mediaFileId: $fileId)
             ->onQueue('music-finder');
     }
 
